@@ -1,13 +1,402 @@
-require('dotenv').config();
-
+const fs = require('fs');
+const path = require('path');
+const { app } = require('electron');
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
 
-const apiId = Number(process.env.API_ID);
-const apiHash = process.env.API_HASH;
-const sessionString = process.env.SESSION_STRING;
+function normalizeSessionString(value) {
+  return typeof value === 'string'
+    ? value.trim()
+    : '';
+}
+
+function getConfigSnapshot() {
+  const current = readSecureConfig();
+
+  return {
+    API_ID: current.API_ID ?? process.env.API_ID ?? '',
+    API_HASH: current.API_HASH ?? process.env.API_HASH ?? '',
+    SESSION_STRING: current.SESSION_STRING ?? process.env.SESSION_STRING ?? ''
+  };
+}
+
+function updateRuntimeSecretsFromConfig(nextConfig = readSecureConfig()) {
+  const apiId = nextConfig.API_ID ?? process.env.API_ID;
+  const apiHash = nextConfig.API_HASH ?? process.env.API_HASH;
+  const sessionString = normalizeSessionString(
+    nextConfig.SESSION_STRING ?? process.env.SESSION_STRING
+  );
+
+  if (apiId) {
+    process.env.API_ID = String(apiId);
+  }
+
+  if (apiHash) {
+    process.env.API_HASH = apiHash;
+  }
+
+  if (sessionString) {
+    process.env.SESSION_STRING = sessionString;
+  }
+
+  return {
+    apiId: apiId ? Number(apiId) : undefined,
+    apiHash,
+    sessionString
+  };
+}
+
+function writeSecureConfig(data) {
+  const secureConfigPath = path.join(
+    app.getPath('userData'),
+    'timecaps-secure-config.json'
+  );
+
+  try {
+    fs.writeFileSync(secureConfigPath, JSON.stringify(data, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Secure config write failed:', error);
+    return false;
+  }
+}
+
+function setSecretValue(key, value) {
+  const secureConfig = readSecureConfig();
+  const nextConfig = { ...secureConfig };
+
+  if (value === undefined || value === null || value === '') {
+    delete nextConfig[key];
+  } else {
+    nextConfig[key] = value;
+  }
+
+  writeSecureConfig(nextConfig);
+
+  if (key === 'API_ID') {
+    process.env.API_ID = String(value ?? '');
+  }
+
+  if (key === 'API_HASH') {
+    process.env.API_HASH = value ?? '';
+  }
+
+  if (key === 'SESSION_STRING') {
+    process.env.SESSION_STRING = normalizeSessionString(value);
+  }
+
+  return nextConfig;
+}
+
+function readSecureConfig() {
+  try {
+    const secureConfigPath = path.join(
+      app.getPath('userData'),
+      'timecaps-secure-config.json'
+    );
+
+    const raw = fs.readFileSync(secureConfigPath, 'utf8');
+    return JSON.parse(raw) || {};
+  } catch {
+    return {};
+  }
+}
+
+function getSecretValue(key) {
+  const secureConfig = readSecureConfig();
+
+  if (secureConfig[key]) {
+    return secureConfig[key];
+  }
+
+  if (process.env[key]) {
+    return process.env[key];
+  }
+
+  return undefined;
+}
+
+let runtimeApiId = Number(getSecretValue('API_ID'));
+let runtimeApiHash = getSecretValue('API_HASH');
+let runtimeSessionString = normalizeSessionString(getSecretValue('SESSION_STRING'));
+
+function refreshRuntimeSecrets() {
+  const next = updateRuntimeSecretsFromConfig();
+  runtimeApiId = Number(next.apiId || 0);
+  runtimeApiHash = next.apiHash || '';
+  runtimeSessionString = next.sessionString || '';
+  return {
+    apiId: runtimeApiId,
+    apiHash: runtimeApiHash,
+    sessionString: runtimeSessionString
+  };
+}
+
+function getTelegramConfig() {
+  const config = readSecureConfig();
+  return {
+    API_ID: config.API_ID ?? process.env.API_ID ?? '',
+    API_HASH: config.API_HASH ?? process.env.API_HASH ?? '',
+    SESSION_STRING: config.SESSION_STRING ?? process.env.SESSION_STRING ?? ''
+  };
+}
+
+async function saveTelegramCredentials(data = {}) {
+  const rawApiId = data.API_ID ?? data.apiId;
+  const rawApiHash = data.API_HASH ?? data.apiHash;
+  const rawSession = data.SESSION_STRING ?? data.sessionString;
+
+  const nextConfig = { ...readSecureConfig() };
+
+  if (rawApiId !== undefined && rawApiId !== null && rawApiId !== '') {
+    nextConfig.API_ID = String(rawApiId);
+  }
+
+  if (rawApiHash !== undefined && rawApiHash !== null && rawApiHash !== '') {
+    nextConfig.API_HASH = String(rawApiHash);
+  }
+
+  if (rawSession !== undefined && rawSession !== null && rawSession !== '') {
+    nextConfig.SESSION_STRING = normalizeSessionString(rawSession);
+  }
+
+  const saved = writeSecureConfig(nextConfig);
+
+  if (saved) {
+    refreshRuntimeSecrets();
+  }
+
+  return {
+    saved,
+    config: getTelegramConfig()
+  };
+}
+
+async function clearTelegramSession() {
+  const secureConfig = readSecureConfig();
+  const nextConfig = { ...secureConfig };
+
+  delete nextConfig.SESSION_STRING;
+
+  const configSaved = writeSecureConfig(nextConfig);
+
+  if (!configSaved) {
+    throw new Error('Telegram session could not be cleared from secure storage.');
+  }
+
+  if (pendingLogin?.client) {
+    try {
+      await pendingLogin.client.disconnect();
+    } catch (error) {
+      console.error('Error clearing pending Telegram login:', error);
+    }
+  }
+
+  pendingLogin = null;
+
+  if (client) {
+    try {
+      if (client.connected) {
+        await client.disconnect();
+      }
+    } catch (error) {
+      console.error('Error disconnecting Telegram client during session clear:', error);
+    }
+  }
+
+  client = null;
+  runtimeSessionString = '';
+  process.env.SESSION_STRING = '';
+
+  return { cleared: true, config: getTelegramConfig() };
+}
+
+async function loginUser(params = {}) {
+  const apiIdValue = params.API_ID ?? params.apiId ?? getSecretValue('API_ID');
+  const apiHashValue = params.API_HASH ?? params.apiHash ?? getSecretValue('API_HASH');
+  const phone = params.phoneNumber ?? params.phone ?? '';
+  const password = params.password ?? '';
+  const code = params.phoneCode ?? '';
+
+  if (!apiIdValue || !apiHashValue) {
+    throw new Error('Telegram API credentials are missing. Save API_ID and API_HASH first.');
+  }
+
+  const loginApiId = Number(apiIdValue);
+
+  if (!loginApiId) {
+    throw new Error('Telegram API_ID must be a valid number.');
+  }
+
+  if (!phone) {
+    throw new Error('Phone number is required for Telegram login.');
+  }
+
+  const samePendingLogin =
+    pendingLogin &&
+    pendingLogin.phone === phone &&
+    pendingLogin.apiId === loginApiId &&
+    pendingLogin.apiHash === String(apiHashValue);
+
+  if (!samePendingLogin) {
+    if (pendingLogin?.client) {
+      try {
+        await pendingLogin.client.disconnect();
+      } catch (error) {
+        console.error('Error replacing pending Telegram login:', error);
+      }
+    }
+
+    const loginClient = new TelegramClient(
+      new StringSession(''),
+      loginApiId,
+      String(apiHashValue),
+      { connectionRetries: 3 }
+    );
+
+    await loginClient.connect();
+
+    const sendCodeResult = await loginClient.sendCode({
+      apiId: loginApiId,
+      apiHash: String(apiHashValue)
+    }, phone);
+
+    pendingLogin = {
+      client: loginClient,
+      phone,
+      apiId: loginApiId,
+      apiHash: String(apiHashValue),
+      phoneCodeHash: sendCodeResult.phoneCodeHash,
+      isCodeViaApp: sendCodeResult.isCodeViaApp,
+      requiresPassword: false
+    };
+
+    if (!code) {
+      return {
+        requiresCode: true,
+        phoneCodeHash: sendCodeResult.phoneCodeHash,
+        isCodeViaApp: sendCodeResult.isCodeViaApp,
+        nextStep: 'code'
+      };
+    }
+  }
+
+  if (!code) {
+    return {
+      requiresCode: true,
+      phoneCodeHash: pendingLogin.phoneCodeHash,
+      isCodeViaApp: pendingLogin.isCodeViaApp,
+      nextStep: 'code'
+    };
+  }
+
+  const loginClient = pendingLogin.client;
+
+  try {
+    let user;
+
+    if (pendingLogin.requiresPassword) {
+      if (!password) {
+        return {
+          requiresPassword: true,
+          nextStep: 'password'
+        };
+      }
+
+      user = await loginClient.signInWithPassword(
+        {
+          apiId: loginApiId,
+          apiHash: String(apiHashValue)
+        },
+        {
+          password: async () => password,
+          onError: async (passwordError) => {
+            console.error('Telegram 2FA error:', passwordError);
+            return true;
+          }
+        }
+      );
+    } else {
+      try {
+        const authorization = await loginClient.invoke(
+          new Api.auth.SignIn({
+            phoneNumber: pendingLogin.phone,
+            phoneCodeHash: pendingLogin.phoneCodeHash,
+            phoneCode: code
+          })
+        );
+
+        user = authorization.user;
+      } catch (error) {
+        const errorMessage = error?.errorMessage || error?.message || '';
+
+        if (!/SESSION_PASSWORD_NEEDED/i.test(errorMessage)) {
+          throw error;
+        }
+
+        pendingLogin.requiresPassword = true;
+
+        if (!password) {
+          return {
+            requiresPassword: true,
+            nextStep: 'password'
+          };
+        }
+
+        user = await loginClient.signInWithPassword(
+          {
+            apiId: loginApiId,
+            apiHash: String(apiHashValue)
+          },
+          {
+            password: async () => password,
+            onError: async (passwordError) => {
+              console.error('Telegram 2FA error:', passwordError);
+              return true;
+            }
+          }
+        );
+      }
+    }
+
+    const session = loginClient.session.save();
+
+    const credentialsResult = await saveTelegramCredentials({
+      API_ID: loginApiId,
+      API_HASH: String(apiHashValue),
+      SESSION_STRING: session
+    });
+
+    if (!credentialsResult.saved) {
+      throw new Error('New Telegram session could not be saved securely.');
+    }
+
+    const savedSession = normalizeSessionString(session);
+
+    runtimeSessionString = savedSession;
+    process.env.SESSION_STRING = savedSession;
+    pendingLogin = null;
+
+    return {
+      success: true,
+      user,
+      session: savedSession,
+      requiresCode: false,
+      nextStep: 'done'
+    };
+  } finally {
+    if (!pendingLogin) {
+      try {
+        await loginClient.disconnect();
+      } catch (error) {
+        console.error('Telegram login disconnect cleanup failed:', error);
+      }
+    }
+  }
+}
 
 let client = null;
+let pendingLogin = null;
 let reconnectTimer = null;
 let reconnectInProgress = false;
 let telegramStatusCallback = null;
@@ -278,10 +667,12 @@ async function connectTelegram() {
     'CONNECT TELEGRAM FUNCTION STARTED'
   );
 
-  if (!apiId || !apiHash || !sessionString) {
+  refreshRuntimeSecrets();
+
+  if (!runtimeApiId || !runtimeApiHash || !runtimeSessionString) {
 
     throw new Error(
-      'Telegram credentials are missing in .env'
+      'Telegram credentials are missing in the secure Electron userData config'
     );
   }
 
@@ -345,9 +736,9 @@ async function connectTelegram() {
   // =======================================================
 
   client = new TelegramClient(
-    new StringSession(sessionString),
-    apiId,
-    apiHash,
+    new StringSession(runtimeSessionString),
+    runtimeApiId,
+    runtimeApiHash,
     {
       connectionRetries: 5
     }
@@ -1276,6 +1667,14 @@ async function cancelScheduledMessage(
 // =========================================================
 
 module.exports = {
+
+  getTelegramConfig,
+
+  saveTelegramCredentials,
+
+  clearTelegramSession,
+
+  loginUser,
 
   connectTelegram,
 

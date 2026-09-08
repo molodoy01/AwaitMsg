@@ -38,6 +38,12 @@ function App() {
 
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
+  const [authStep, setAuthStep] = useState<'phone' | 'code' | 'password'>('phone');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneCode, setPhoneCode] = useState('');
+  const [twoFactorPassword, setTwoFactorPassword] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [scheduling, setScheduling] = useState(false);
   const [successPulse, setSuccessPulse] = useState(false);
   const [revealingId, setRevealingId] = useState<string | null>(null);
@@ -123,34 +129,37 @@ function App() {
 
     let mounted = true;
 
-    window.telegram
-      .connect()
-      .then((result) => {
+    window.telegram.getConfig()
+      .then((configResult) => {
         if (!mounted) return;
 
-        setConnecting(false);
-        setConnected(result.success);
+        const session = configResult.config?.SESSION_STRING;
 
-        if (!result.success) {
-          showNotification(
-            result.error || 'Failed to connect. Some features may not work.',
-            'error',
-            'Connection error'
-          );
+        if (!configResult.success || !session) {
+          setConnecting(false);
+          return;
         }
+
+        return window.telegram.connect().then((result) => {
+          if (!mounted) return;
+
+          setConnecting(false);
+          setConnected(result.success);
+
+          if (!result.success) {
+            setAuthError(result.error || 'Saved Telegram session could not be connected.');
+          }
+        });
       })
       .catch((error) => {
         if (!mounted) return;
 
         setConnecting(false);
         setConnected(false);
-
-        showNotification(
+        setAuthError(
           error instanceof Error
             ? error.message
-            : 'Failed to connect. Some features may not work.',
-          'error',
-          'Connection error'
+            : 'Unable to read Telegram connection settings.'
         );
       });
 
@@ -695,6 +704,88 @@ function App() {
     });
   }
 
+  async function handleTelegramAuth() {
+    setAuthBusy(true);
+    setAuthError('');
+
+    try {
+      const result = await window.telegram.login({
+        phoneNumber,
+        phoneCode: authStep === 'phone' ? undefined : phoneCode,
+        password: authStep === 'password' ? twoFactorPassword : undefined,
+      });
+
+      if (!result.success) {
+        const error = result.error || 'Telegram authorization failed.';
+
+        if (
+          authStep === 'code' &&
+          /password|2fa|session_password_needed/i.test(error)
+        ) {
+          setAuthStep('password');
+          setAuthError('Enter your Telegram 2FA password to continue.');
+        } else {
+          setAuthError(error);
+        }
+
+        return;
+      }
+
+      if (result.requiresPassword || result.nextStep === 'password') {
+        setAuthStep('password');
+        setAuthError('Enter your Telegram 2FA password to continue.');
+        return;
+      }
+
+      if (result.requiresCode || result.nextStep === 'code') {
+        setAuthStep('code');
+        return;
+      }
+
+      setConnecting(false);
+      setConnected(true);
+      setAuthError('');
+    } catch (error) {
+      setAuthError(
+        error instanceof Error
+          ? error.message
+          : 'Telegram authorization failed.'
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setAuthBusy(true);
+    setAuthError('');
+
+    try {
+      const result = await window.telegram.clearSession();
+
+      if (!result.success) {
+        setAuthError(result.error || 'Unable to disconnect Telegram.');
+        return;
+      }
+
+      setConnected(false);
+      setChats([]);
+      setSelectedChat(null);
+      saveChats([]);
+      setAuthStep('phone');
+      setPhoneCode('');
+      setTwoFactorPassword('');
+    } catch (error) {
+      setAuthError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to disconnect Telegram.'
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   return (
     <>
       <div className={`connection-spinner ${connecting ? 'show' : ''}`}>
@@ -724,33 +815,127 @@ function App() {
       <div className="app">
         <header className="topbar">
           <div className="brand">
-            TimeCaps <span>2.0</span>
+            TIME CAPS / TELEGRAM
           </div>
 
-          <div className="status">
+          <div className="topbar-actions">
+            {connected && (
+              <button
+                className="account-action"
+                onClick={handleDisconnect}
+                disabled={authBusy}
+              >
+                Log out
+              </button>
+            )}
+
+            <div className="status">
             <i />
-            {connected ? 'Connected' : 'Offline'}
+              {connected ? 'Connected' : 'Offline'}
+            </div>
           </div>
         </header>
 
+        {!connected && !connecting ? (
+          <section className="auth-panel">
+            <div className="auth-kicker">Your Telegram space</div>
+            <h1>Connect Telegram.</h1>
+            <p className="auth-copy">
+              Bring your account in. Your messages stay local to this device.
+            </p>
+
+            <div className="auth-form">
+              {authStep === 'phone' && (
+                <div className="field">
+                  <label>Phone</label>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder="+1 555 000 0000"
+                    autoComplete="tel"
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {authStep !== 'phone' && (
+                <div className="field">
+                  <label>Login code</label>
+                  <input
+                    type="text"
+                    value={phoneCode}
+                    onChange={(event) => setPhoneCode(event.target.value)}
+                    placeholder="The code Telegram sent you"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {authStep === 'password' && (
+                <div className="field">
+                  <label>Two-step password</label>
+                  <input
+                    type="password"
+                    value={twoFactorPassword}
+                    onChange={(event) => setTwoFactorPassword(event.target.value)}
+                    placeholder="Your Telegram password"
+                    autoComplete="current-password"
+                  />
+                </div>
+              )}
+
+              {authError && <p className="auth-error">{authError}</p>}
+
+              <button
+                className="auth-button"
+                onClick={handleTelegramAuth}
+                disabled={authBusy || (authStep === 'phone' ? !phoneNumber.trim() : !phoneCode.trim())}
+              >
+                {authBusy
+                  ? 'Connecting…'
+                  : authStep === 'phone'
+                    ? 'Send code'
+                    : authStep === 'password'
+                      ? 'Verify and connect'
+                      : 'Verify code'}
+              </button>
+
+              {authStep !== 'phone' && (
+                <button
+                  className="auth-back-button"
+                  onClick={() => {
+                    setAuthStep('phone');
+                    setPhoneCode('');
+                    setTwoFactorPassword('');
+                    setAuthError('');
+                  }}
+                  disabled={authBusy}
+                >
+                  Start over with another phone
+                </button>
+              )}
+            </div>
+          </section>
+        ) : (
+          <>
         <section className="hero">
           <h1>
-            Scheduled.
+            <span className="hero-title-accent">Set the moment.</span>
             <br />
-            Sealed.
-            <br />
-            Sent.
+            <span>We’ll keep it.</span>
           </h1>
 
           <p>
-            Schedule messages to be sent at the perfect moment.
-            Set it, forget it, and let time do the rest.
+            Messages ready when the moment arrives.
           </p>
         </section>
 
         <section className="composer">
           <div className="field">
-            <label>Chat</label>
+            <label>Send to</label>
 
             <ChatPicker
               chats={chats}
@@ -765,19 +950,19 @@ function App() {
           </div>
 
           <div className="field">
-            <label>Message</label>
+            <label>Your message</label>
 
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Write your message…"
+              placeholder="What should be said when the moment arrives?"
               maxLength={4096}
             />
           </div>
 
           <div className="field">
             <label>
-              Schedule
+              Send at
               <span className="tz-badge">
                 {getTimezoneLabel()}
               </span>
@@ -833,8 +1018,10 @@ function App() {
 
         <footer>
           <span>TimeCaps 2.0</span>
-          <span>Local archive</span>
+          <span>Your local archive</span>
         </footer>
+          </>
+        )}
       </div>
     </>
   );

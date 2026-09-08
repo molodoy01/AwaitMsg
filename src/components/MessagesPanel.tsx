@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ScheduledMessage } from '@/types';
 import { MessageCard } from './MessageCard';
 
@@ -30,11 +31,16 @@ export function MessagesPanel({
   cancelingIds,
   sendingIds,
 }: Props) {
+  const [showOlderUpcoming, setShowOlderUpcoming] = useState(false);
+
   const upcomingSorted = [...upcoming].sort(
     (a, b) =>
-      new Date(a.when).getTime() -
-      new Date(b.when).getTime()
+      new Date(b.createdAt || b.when).getTime() -
+      new Date(a.createdAt || a.when).getTime()
   );
+
+  const recentUpcoming = upcomingSorted.slice(0, 3);
+  const olderUpcoming = upcomingSorted.slice(3);
 
   const sentSorted = [...sent].sort(
     (a, b) =>
@@ -63,7 +69,7 @@ export function MessagesPanel({
           }`}
           onClick={() => onTabChange('sent')}
         >
-          Sent
+          History
           <span className="tab-count">
             {sent.length}
           </span>
@@ -75,9 +81,9 @@ export function MessagesPanel({
           <button
             className="clear-history"
             onClick={onClearSent}
-            title="Clear sent history"
+            title="Clear message history"
           >
-            Clear
+            Clear history
           </button>
         )}
 
@@ -86,9 +92,9 @@ export function MessagesPanel({
             <button
               className="clear-history"
               onClick={onClearAll}
-              title="Cancel all upcoming"
+              title="Clear all upcoming messages"
             >
-              Clear
+              Clear all
             </button>
           )}
       </div>
@@ -100,16 +106,16 @@ export function MessagesPanel({
       >
         {upcomingSorted.length === 0 ? (
           <div className="empty-state">
-            No upcoming messages
+            Nothing waiting. Your next moment will appear here.
           </div>
         ) : (
           <div className="message-list">
-            {upcomingSorted.map((msg, i) => (
+            {recentUpcoming.map((msg, i) => (
               <MessageCard
                 key={msg.id}
                 message={msg}
                 isLast={
-                  i === upcomingSorted.length - 1
+                  i === recentUpcoming.length - 1
                 }
                 isRevealing={revealingId === msg.id}
                 onCancel={onCancel}
@@ -131,6 +137,48 @@ export function MessagesPanel({
                 isSending={sendingIds.has(msg.id)}
               />
             ))}
+
+            {olderUpcoming.length > 0 && (
+              <div className="upcoming-older-toggle-wrap">
+                <button
+                  type="button"
+                  className="upcoming-older-toggle"
+                  onClick={() => setShowOlderUpcoming((value) => !value)}
+                >
+                  {showOlderUpcoming ? 'Hide older moments' : 'Show older moments'}
+                </button>
+              </div>
+            )}
+
+            {showOlderUpcoming &&
+              olderUpcoming.map((msg, i) => (
+                <MessageCard
+                  key={msg.id}
+                  message={msg}
+                  isLast={
+                    i === olderUpcoming.length - 1
+                  }
+                  isRevealing={revealingId === msg.id}
+                  onCancel={onCancel}
+                  onSendNow={onSendNow}
+                  onDelete={onDelete}
+                  showCancel={
+                    (msg.status === 'scheduled' ||
+                      msg.status === 'confirmed') &&
+                    !cancelingIds.has(msg.id)
+                  }
+                  showSendNow={
+                    (msg.status === 'scheduled' ||
+                      msg.status === 'confirmed') &&
+                    !sendingIds.has(msg.id)
+                  }
+                  showDelete={true}
+                  railColor="#9aa8b8"
+                  isCanceling={cancelingIds.has(msg.id)}
+                  isSending={sendingIds.has(msg.id)}
+                  showCreatedMeta={true}
+                />
+              ))}
           </div>
         )}
       </div>
@@ -142,7 +190,7 @@ export function MessagesPanel({
       >
         {sentSorted.length === 0 ? (
           <div className="empty-state">
-            No sent messages
+            Your sent messages will live here.
           </div>
         ) : (
           <div className="message-list">

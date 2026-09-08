@@ -6,15 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
     "preview": "vite preview",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "electron": "electron ."
+    "electron": "electron .",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "dotenv": "^17.4.2",
-    "electron": "^44.2.0",
     "lucide-react": "^0.446.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -27,6 +28,8 @@
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.18",
     "concurrently": "^10.0.5",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",
@@ -37,5 +40,27 @@
     "typescript-eslint": "^8.3.0",
     "vite": "^5.4.2"
   },
-  "main": "main.cjs"
+  "main": "main.cjs",
+  "build": {
+    "appId": "com.timecaps.app",
+    "productName": "TimeCaps",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "main.cjs",
+      "preload.cjs",
+      "telegram.cjs",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraFiles": [],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "asar": true
+  }
 }

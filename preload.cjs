@@ -4,6 +4,18 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('telegram', {
 
+  getConfig: () =>
+    ipcRenderer.invoke('telegram-config'),
+
+  saveCredentials: (data) =>
+    ipcRenderer.invoke('telegram-save-credentials', data),
+
+  clearSession: () =>
+    ipcRenderer.invoke('telegram-clear-session'),
+
+  login: (data) =>
+    ipcRenderer.invoke('telegram-login', data),
+
   connect: () =>
     ipcRenderer.invoke('telegram-connect'),
 

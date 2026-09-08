@@ -1,7 +1,103 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
+const { app, BrowserWindow, ipcMain } = require('electron');
+
+const SECURE_CONFIG_PATH = path.join(
+  app.getPath('userData'),
+  'timecaps-secure-config.json'
+);
 
 let mainWindow = null;
+
+function readSecureConfig() {
+  try {
+    const raw = fs.readFileSync(SECURE_CONFIG_PATH, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function writeSecureConfig(data) {
+  try {
+    fs.writeFileSync(SECURE_CONFIG_PATH, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('Secure config write failed:', error);
+  }
+}
+
+function syncSecureEnv() {
+  const config = readSecureConfig();
+  const secureConfigExists = fs.existsSync(SECURE_CONFIG_PATH);
+
+  if (config.API_ID) {
+    process.env.API_ID = String(config.API_ID);
+  }
+
+  if (config.API_HASH) {
+    process.env.API_HASH = config.API_HASH;
+  }
+
+  if (config.SESSION_STRING) {
+    process.env.SESSION_STRING = config.SESSION_STRING;
+  } else if (secureConfigExists) {
+    process.env.SESSION_STRING = '';
+  }
+}
+
+function loadProductionSecrets() {
+  const config = readSecureConfig();
+  const secureConfigExists = fs.existsSync(SECURE_CONFIG_PATH);
+  const nextConfig = { ...config };
+
+  if (!nextConfig.API_ID && process.env.API_ID) {
+    nextConfig.API_ID = process.env.API_ID;
+  }
+
+  if (!nextConfig.API_HASH && process.env.API_HASH) {
+    nextConfig.API_HASH = process.env.API_HASH;
+  }
+
+  if (!secureConfigExists && !nextConfig.SESSION_STRING && process.env.SESSION_STRING) {
+    nextConfig.SESSION_STRING = process.env.SESSION_STRING;
+  }
+
+  if (
+    (!config.API_ID && nextConfig.API_ID) ||
+    (!config.API_HASH && nextConfig.API_HASH) ||
+    (!config.SESSION_STRING && nextConfig.SESSION_STRING)
+  ) {
+    writeSecureConfig(nextConfig);
+  }
+
+  if (nextConfig.API_ID) {
+    process.env.API_ID = String(nextConfig.API_ID);
+  }
+
+  if (nextConfig.API_HASH) {
+    process.env.API_HASH = nextConfig.API_HASH;
+  }
+
+  if (nextConfig.SESSION_STRING) {
+    process.env.SESSION_STRING = nextConfig.SESSION_STRING;
+  }
+}
+
+loadProductionSecrets();
+syncSecureEnv();
+
+function shouldLoadProductionBuild() {
+  return app.isPackaged || process.env.npm_lifecycle_event === 'start';
+}
+
+function getAppUrl() {
+  if (shouldLoadProductionBuild()) {
+    return `file://${path.join(__dirname, 'dist', 'index.html')}`;
+  }
+
+  return 'http://localhost:5173';
+}
 
 function sendTelegramStatus(status) {
 
@@ -19,10 +115,12 @@ function sendTelegramStatus(status) {
 
 }
 
-require('dotenv').config();
-
 const {
   connectTelegram,
+  loginUser,
+  getTelegramConfig,
+  saveTelegramCredentials,
+  clearTelegramSession,
   getChats,
   getContacts,
   resolveChat,
@@ -52,7 +150,13 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadURL('http://localhost:5173');
+  const appUrl = getAppUrl();
+
+  if (shouldLoadProductionBuild()) {
+    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  } else {
+    mainWindow.loadURL(appUrl);
+  }
 }
 
 ipcMain.handle('telegram-connect', async () => {
@@ -61,6 +165,46 @@ ipcMain.handle('telegram-connect', async () => {
     return { success: true };
   } catch (error) {
     console.error('Telegram connection error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-config', async () => {
+  try {
+    const config = getTelegramConfig();
+    return { success: true, config };
+  } catch (error) {
+    console.error('Telegram config read error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-save-credentials', async (event, data = {}) => {
+  try {
+    const result = await saveTelegramCredentials(data);
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Telegram save credentials error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-clear-session', async () => {
+  try {
+    const result = await clearTelegramSession();
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Telegram clear session error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-login', async (event, data = {}) => {
+  try {
+    const result = await loginUser(data);
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Telegram login error:', error);
     return { success: false, error: error.message };
   }
 });

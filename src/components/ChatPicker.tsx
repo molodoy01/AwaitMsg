@@ -60,8 +60,8 @@ export function ChatPicker({
         } else {
           if (onError) {
             onError(
-              result.error || 'Chat not found.',
-              'Not found'
+              result.error || 'That chat could not be found.',
+              'Chat not found'
             );
           }
         }
@@ -71,8 +71,8 @@ export function ChatPicker({
 
         if (onError) {
           onError(
-            'Network error while finding chat.',
-            'Error'
+            'We could not reach Telegram while looking for that chat.',
+            'Connection problem'
           );
         }
       });
@@ -93,7 +93,7 @@ export function ChatPicker({
         tabIndex={0}
         role="button"
       >
-        {selectedChat ? selectedChat.name : 'Select chat…'}
+        {selectedChat ? selectedChat.name : 'Choose a chat…'}
       </div>
 
       <div className={`chat-picker-menu ${open ? 'open' : ''}`}>
@@ -101,7 +101,7 @@ export function ChatPicker({
           className="chat-add"
           onClick={() => setShowAddForm(!showAddForm)}
         >
-          + Add new chat
+          Add a chat
         </div>
 
         <div

@@ -13,10 +13,10 @@ export function ChatRemoveModal({
 }: Props) {
   return (
     <div className={`chat-remove-modal ${show ? 'show' : ''}`}>
-      <div className="chat-remove-title">Remove chat?</div>
+      <div className="chat-remove-title">Remove this chat?</div>
 
       <div className="chat-remove-message">
-        "{chatName}" will be removed from your saved chats. Scheduled and sent messages will remain in history.
+        "{chatName}" will leave your saved chats. Scheduled and sent messages will stay in your archive.
       </div>
 
       <div className="chat-remove-actions">

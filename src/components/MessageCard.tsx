@@ -14,6 +14,7 @@ interface Props {
   isCanceling?: boolean;
   isSending?: boolean;
   isRevealing?: boolean;
+  showCreatedMeta?: boolean;
 }
 
 export function MessageCard({
@@ -29,12 +30,18 @@ export function MessageCard({
   isCanceling,
   isSending,
   isRevealing,
+  showCreatedMeta,
 }: Props) {
+  const createdLabel = new Date(message.createdAt).toLocaleString([], {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+
   return (
     <div
       className={`message-row ${
         isRevealing ? 'is-revealing' : ''
-      } ${message.status}`}
+      } ${message.status} ${showCreatedMeta ? 'archive-row' : ''}`}
     >
       <div className="message-rail" aria-hidden="true">
         <div
@@ -71,6 +78,13 @@ export function MessageCard({
         <div className="message-chat">
           {message.chatName}
         </div>
+
+        {showCreatedMeta && (
+          <div className="message-created-meta">
+            <span className="message-created-rail" />
+            <span>{createdLabel}</span>
+          </div>
+        )}
 
         <div className="message-meta">
           {formatDateTime(message.when)}
