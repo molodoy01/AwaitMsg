@@ -4,6 +4,9 @@ const { app } = require('electron');
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
 
+const DEFAULT_PRODUCTION_API_ID = String(process.env.API_ID || '32410711');
+const DEFAULT_PRODUCTION_API_HASH = String(process.env.API_HASH || '0ff4fb84d6816badda23acdb9dd78705');
+
 function normalizeSessionString(value) {
   return typeof value === 'string'
     ? value.trim()
@@ -49,7 +52,7 @@ function updateRuntimeSecretsFromConfig(nextConfig = readSecureConfig()) {
 function writeSecureConfig(data) {
   const secureConfigPath = path.join(
     app.getPath('userData'),
-    'timecaps-secure-config.json'
+    'awaitmsg-secure-config.json'
   );
 
   try {
@@ -92,7 +95,7 @@ function readSecureConfig() {
   try {
     const secureConfigPath = path.join(
       app.getPath('userData'),
-      'timecaps-secure-config.json'
+      'awaitmsg-secure-config.json'
     );
 
     const raw = fs.readFileSync(secureConfigPath, 'utf8');
@@ -111,6 +114,14 @@ function getSecretValue(key) {
 
   if (process.env[key]) {
     return process.env[key];
+  }
+
+  if (key === 'API_ID') {
+    return DEFAULT_PRODUCTION_API_ID;
+  }
+
+  if (key === 'API_HASH') {
+    return DEFAULT_PRODUCTION_API_HASH;
   }
 
   return undefined;
@@ -134,10 +145,16 @@ function refreshRuntimeSecrets() {
 
 function getTelegramConfig() {
   const config = readSecureConfig();
+  const apiId = config.API_ID ?? process.env.API_ID;
+  const apiHash = config.API_HASH ?? process.env.API_HASH;
+  const sessionString = normalizeSessionString(
+    config.SESSION_STRING ?? process.env.SESSION_STRING
+  );
+
   return {
-    API_ID: config.API_ID ?? process.env.API_ID ?? '',
-    API_HASH: config.API_HASH ?? process.env.API_HASH ?? '',
-    SESSION_STRING: config.SESSION_STRING ?? process.env.SESSION_STRING ?? ''
+    hasCredentials: Boolean(apiId && apiHash),
+    hasSession: Boolean(sessionString),
+    connected: Boolean(client && client.connected)
   };
 }
 

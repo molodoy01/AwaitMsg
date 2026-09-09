@@ -25,6 +25,7 @@ import { Notification } from '@/components/Notification';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
+import { LogOut } from 'lucide-react';
 
 function App() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -46,6 +47,8 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [scheduling, setScheduling] = useState(false);
   const [successPulse, setSuccessPulse] = useState(false);
+  const [timelineActive, setTimelineActive] = useState(false);
+  const [timelineRun, setTimelineRun] = useState(0);
   const [revealingId, setRevealingId] = useState<string | null>(null);
 
   const [notification, setNotification] = useState<NotificationState>({
@@ -65,6 +68,7 @@ function App() {
 
   const [cancelingIds, setCancelingIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
+  const openPickerRef = useRef<'date' | 'time' | null>(null);
 
   const notificationTimeoutRef = useRef<number | null>(null);
 
@@ -102,6 +106,11 @@ function App() {
     }));
   }, []);
 
+  function startTimelineGlow() {
+    setTimelineRun((run) => run + 1);
+    setTimelineActive(true);
+  }
+
   useEffect(() => {
     return () => {
       if (notificationTimeoutRef.current) {
@@ -133,9 +142,9 @@ function App() {
       .then((configResult) => {
         if (!mounted) return;
 
-        const session = configResult.config?.SESSION_STRING;
+        const hasSession = Boolean(configResult.config?.hasSession);
 
-        if (!configResult.success || !session) {
+        if (!configResult.success || !hasSession) {
           setConnecting(false);
           return;
         }
@@ -147,7 +156,7 @@ function App() {
           setConnected(result.success);
 
           if (!result.success) {
-            setAuthError(result.error || 'Saved Telegram session could not be connected.');
+            setAuthError(result.error || 'Saved session could not be connected.');
           }
         });
       })
@@ -159,7 +168,7 @@ function App() {
         setAuthError(
           error instanceof Error
             ? error.message
-            : 'Unable to read Telegram connection settings.'
+            : 'Unable to read connection settings.'
         );
       });
 
@@ -404,6 +413,7 @@ function App() {
     }
 
     setScheduling(true);
+    setTimelineActive(false);
 
     const whenISO = whenDate.toISOString();
     const targetTimestamp = Math.floor(
@@ -425,6 +435,8 @@ function App() {
 
 
         if (result.success) {
+          startTimelineGlow();
+
           const telegramMessageId =
             result.telegramMessageId ?? result.id;
 
@@ -470,14 +482,7 @@ function App() {
 
           window.setTimeout(() => {
             setSuccessPulse(false);
-          }, 1500);
-
-
-          showNotification(
-            `Message scheduled to ${chatName}`,
-            'success',
-            'Scheduled'
-          );
+          }, 3500);
         } else {
           showNotification(
             result.error || 'Failed to schedule message.',
@@ -509,7 +514,7 @@ function App() {
       showNotification(
         'Telegram message ID is missing.',
         'error',
-        'Cannot cancel'
+        'Cannot unschedule'
       );
       return;
     }
@@ -541,9 +546,9 @@ function App() {
           saveUpcoming(updated);
 
           showNotification(
-            'Message cancelled.',
+            'Message unscheduled.',
             'info',
-            'Cancelled'
+            'Unscheduled'
           );
         } else {
           showNotification(
@@ -589,6 +594,8 @@ function App() {
         });
 
         if (result.success) {
+          startTimelineGlow();
+
           const sentMsg: ScheduledMessage = {
             ...msg,
             status: 'sent',
@@ -609,12 +616,6 @@ function App() {
 
           setRevealingId(msg.id);
           window.setTimeout(() => setRevealingId(null), 3500);
-
-          showNotification(
-            `Sent to ${msg.chatName}.`,
-            'success',
-            'Sent'
-          );
         } else {
           showNotification(
             result.error || 'Failed to send.',
@@ -716,7 +717,7 @@ function App() {
       });
 
       if (!result.success) {
-        const error = result.error || 'Telegram authorization failed.';
+        const error = result.error || 'Authorization failed.';
 
         if (
           authStep === 'code' &&
@@ -749,7 +750,7 @@ function App() {
       setAuthError(
         error instanceof Error
           ? error.message
-          : 'Telegram authorization failed.'
+          : 'Authorization failed.'
       );
     } finally {
       setAuthBusy(false);
@@ -764,7 +765,7 @@ function App() {
       const result = await window.telegram.clearSession();
 
       if (!result.success) {
-        setAuthError(result.error || 'Unable to disconnect Telegram.');
+        setAuthError(result.error || 'Unable to disconnect account.');
         return;
       }
 
@@ -779,7 +780,7 @@ function App() {
       setAuthError(
         error instanceof Error
           ? error.message
-          : 'Unable to disconnect Telegram.'
+          : 'Unable to disconnect account.'
       );
     } finally {
       setAuthBusy(false);
@@ -815,33 +816,39 @@ function App() {
       <div className="app">
         <header className="topbar">
           <div className="brand">
-            TIME CAPS / TELEGRAM
+            AWAITMSG
           </div>
 
           <div className="topbar-actions">
+            <div className="status">
+              <span className="status-mark" aria-hidden="true">
+                <i />
+              </span>
+              <span className="status-copy">
+                <strong>{connected ? 'Connected' : 'Offline'}</strong>
+              </span>
+            </div>
+
             {connected && (
               <button
                 className="account-action"
                 onClick={handleDisconnect}
                 disabled={authBusy}
+                title="Log out"
+                aria-label="Log out"
               >
-                Log out
+                <LogOut size={14} strokeWidth={1.7} />
               </button>
             )}
-
-            <div className="status">
-            <i />
-              {connected ? 'Connected' : 'Offline'}
-            </div>
           </div>
         </header>
 
         {!connected && !connecting ? (
           <section className="auth-panel">
-            <div className="auth-kicker">Your Telegram space</div>
-            <h1>Connect Telegram.</h1>
+            <div className="auth-kicker">Your message</div>
+            <h1>Connect your space.</h1>
             <p className="auth-copy">
-              Bring your account in. Your messages stay local to this device.
+              Bring your account in and keep every message on schedule.
             </p>
 
             <div className="auth-form">
@@ -852,7 +859,7 @@ function App() {
                     type="tel"
                     value={phoneNumber}
                     onChange={(event) => setPhoneNumber(event.target.value)}
-                    placeholder="+1 555 000 0000"
+                    placeholder="1 555 000 0000"
                     autoComplete="tel"
                     autoFocus
                   />
@@ -866,7 +873,7 @@ function App() {
                     type="text"
                     value={phoneCode}
                     onChange={(event) => setPhoneCode(event.target.value)}
-                    placeholder="The code Telegram sent you"
+                    placeholder="The code sent to your phone"
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     autoFocus
@@ -881,7 +888,7 @@ function App() {
                     type="password"
                     value={twoFactorPassword}
                     onChange={(event) => setTwoFactorPassword(event.target.value)}
-                    placeholder="Your Telegram password"
+                    placeholder="Your two-step password"
                     autoComplete="current-password"
                   />
                 </div>
@@ -897,7 +904,7 @@ function App() {
                 {authBusy
                   ? 'Connecting…'
                   : authStep === 'phone'
-                    ? 'Send code'
+                    ? 'Sign in'
                     : authStep === 'password'
                       ? 'Verify and connect'
                       : 'Verify code'}
@@ -923,19 +930,17 @@ function App() {
           <>
         <section className="hero">
           <h1>
-            <span className="hero-title-accent">Set the moment.</span>
-            <br />
-            <span>We’ll keep it.</span>
+            <span className="hero-title-accent">Let it wait.</span>
           </h1>
 
           <p>
-            Messages ready when the moment arrives.
+            Messages, ready when the moment arrives.
           </p>
         </section>
 
         <section className="composer">
           <div className="field">
-            <label>Send to</label>
+            <label>Chat</label>
 
             <ChatPicker
               chats={chats}
@@ -949,37 +954,104 @@ function App() {
             />
           </div>
 
-          <div className="field">
+          <div className="field message-field">
             <label>Your message</label>
 
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="What should be said when the moment arrives?"
-              maxLength={4096}
-            />
+            <div className="message-input-wrap">
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="What should be said when the moment arrives?"
+                maxLength={4096}
+              />
+            </div>
           </div>
 
           <div className="field">
-            <label>
-              Send at
-              <span className="tz-badge">
-                {getTimezoneLabel()}
-              </span>
-            </label>
+            <label>Your time</label>
 
             <div className="schedule-row">
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
+              <div className="moment-controls">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  onPointerDown={(e) => {
+                    if (openPickerRef.current === 'date') {
+                      e.currentTarget.blur();
+                      openPickerRef.current = null;
+                    } else {
+                      openPickerRef.current = 'date';
+                    }
+                  }}
+                  onBlur={() => {
+                    if (openPickerRef.current === 'date') {
+                      openPickerRef.current = null;
+                    }
+                  }}
+                />
 
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-              />
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  onPointerDown={(e) => {
+                    if (openPickerRef.current === 'time') {
+                      e.currentTarget.blur();
+                      openPickerRef.current = null;
+                    } else {
+                      openPickerRef.current = 'time';
+                    }
+                  }}
+                  onBlur={() => {
+                    if (openPickerRef.current === 'time') {
+                      openPickerRef.current = null;
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className={`future-moment-visual ${timelineActive ? 'is-active' : ''}`}>
+              <div className="future-moment-line" aria-label="From this moment to the future">
+                <div className="future-moment-prefix" aria-hidden="true">
+                  {[0].map((index) => (
+                    <span
+                      key={index}
+                      className="future-moment-dot is-glow"
+                      style={{ '--dot-index': index } as React.CSSProperties}
+                    />
+                  ))}
+                </div>
+                <span className="future-moment-label">MESSAGE</span>
+                <div
+                  key={timelineRun}
+                  className="future-moment-track"
+                  aria-hidden="true"
+                >
+                  {Array.from({ length: 16 }, (_, offset) => {
+                    const index = offset + 1;
+
+                    return (
+                      <span
+                        key={index}
+                        className="future-moment-dot is-glow"
+                        style={{ '--dot-index': index } as React.CSSProperties}
+                      />
+                    );
+                  })}
+                </div>
+                <span className="future-moment-label future-moment-end-label">FUTURE</span>
+                <div className="future-moment-suffix" aria-hidden="true">
+                  {[17, 18, 19].map((index) => (
+                    <span
+                      key={index}
+                      className="future-moment-dot is-glow"
+                      style={{ '--dot-index': index } as React.CSSProperties}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -993,8 +1065,8 @@ function App() {
             {scheduling
               ? 'Scheduling…'
               : successPulse
-                ? '✓ Scheduled'
-                : 'Schedule Message'}
+                ? 'SEALED'
+                : 'Seal it'}
           </button>
         </section>
 
@@ -1017,8 +1089,8 @@ function App() {
 
 
         <footer>
-          <span>TimeCaps 2.0</span>
-          <span>Your local archive</span>
+          <span>AwaitMsg</span>
+          <span>{getTimezoneLabel()}</span>
         </footer>
           </>
         )}

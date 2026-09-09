@@ -1,9 +1,9 @@
 import type { ScheduledMessage } from '@/types';
 
-const UPCOMING_KEY = 'timecaps_upcoming';
-const SENT_KEY = 'timecaps_sent';
-const HIDDEN_CHATS_KEY = 'timecaps_hidden_chats';
-const CHATS_KEY = 'timecaps_chats';
+const UPCOMING_KEY = 'awaitmsg_upcoming';
+const SENT_KEY = 'awaitmsg_sent';
+const HIDDEN_CHATS_KEY = 'awaitmsg_hidden_chats';
+const CHATS_KEY = 'awaitmsg_chats';
 
 export function load<T>(key: string, fallback: T): T {
   try {

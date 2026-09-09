@@ -1,7 +1,7 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "awaitmsg",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -42,8 +42,8 @@
   },
   "main": "main.cjs",
   "build": {
-    "appId": "com.timecaps.app",
-    "productName": "TimeCaps",
+    "appId": "com.awaitmsg.app",
+    "productName": "AwaitMsg",
     "directories": {
       "output": "release"
     },

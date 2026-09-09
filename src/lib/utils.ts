@@ -18,7 +18,10 @@ export function formatDateTime(iso: string): string {
   return `${formattedDate} · ${formattedTime}`;
 }
 
-export function getTimezoneLabel(): string {
+export function getTimezoneParts(): {
+  offset: string;
+  city: string;
+} {
   const offsetMinutes = -new Date().getTimezoneOffset();
   const sign = offsetMinutes >= 0 ? '+' : '-';
   const absMinutes = Math.abs(offsetMinutes);
@@ -27,7 +30,15 @@ export function getTimezoneLabel(): string {
   const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
   const city = tzName.split('/')[1] || tzName;
   const offsetStr = minutes > 0 ? `${hours}:${String(minutes).padStart(2, '0')}` : `${hours}`;
-  return `· UTC${sign}${offsetStr}${city ? ` (${city})` : ''}`;
+  return {
+    offset: `UTC${sign}${offsetStr}`,
+    city: city ? `· (${city})` : '',
+  };
+}
+
+export function getTimezoneLabel(): string {
+  const { offset, city } = getTimezoneParts();
+  return `${city} ${offset}`.trim();
 }
 
 export function getTodayStr(): string {

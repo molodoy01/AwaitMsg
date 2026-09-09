@@ -3,9 +3,12 @@ const path = require('path');
 require('dotenv').config();
 const { app, BrowserWindow, ipcMain } = require('electron');
 
+const DEFAULT_PRODUCTION_API_ID = String(process.env.API_ID || '32410711');
+const DEFAULT_PRODUCTION_API_HASH = String(process.env.API_HASH || '0ff4fb84d6816badda23acdb9dd78705');
+
 const SECURE_CONFIG_PATH = path.join(
   app.getPath('userData'),
-  'timecaps-secure-config.json'
+  'awaitmsg-secure-config.json'
 );
 
 let mainWindow = null;
@@ -47,6 +50,11 @@ function syncSecureEnv() {
 }
 
 function loadProductionSecrets() {
+  if (app.isPackaged) {
+    process.env.API_ID = process.env.API_ID || DEFAULT_PRODUCTION_API_ID;
+    process.env.API_HASH = process.env.API_HASH || DEFAULT_PRODUCTION_API_HASH;
+  }
+
   const config = readSecureConfig();
   const secureConfigExists = fs.existsSync(SECURE_CONFIG_PATH);
   const nextConfig = { ...config };
@@ -172,7 +180,14 @@ ipcMain.handle('telegram-connect', async () => {
 ipcMain.handle('telegram-config', async () => {
   try {
     const config = getTelegramConfig();
-    return { success: true, config };
+    return {
+      success: true,
+      config: {
+        hasCredentials: Boolean(config.hasCredentials),
+        hasSession: Boolean(config.hasSession),
+        connected: Boolean(config.connected)
+      }
+    };
   } catch (error) {
     console.error('Telegram config read error:', error);
     return { success: false, error: error.message };

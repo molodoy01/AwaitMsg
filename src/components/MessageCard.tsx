@@ -19,12 +19,9 @@ interface Props {
 
 export function MessageCard({
   message,
-  isLast,
-  onCancel,
   onSendNow,
   onDelete,
   showDelete,
-  showCancel,
   showSendNow,
   railColor,
   isCanceling,
@@ -98,7 +95,7 @@ export function MessageCard({
           className={`message-status ${message.status}`}
         >
           {isCanceling
-            ? 'Cancelling…'
+            ? 'Unscheduling…'
             : isSending
               ? 'Sending…'
               : message.status === 'sent'
@@ -110,19 +107,11 @@ export function MessageCard({
       </div>
 
       <div className="message-actions">
-        {showCancel && (
-          <button
-            className="msg-btn"
-            onClick={() => onCancel(message)}
-          >
-            Cancel
-          </button>
-        )}
-
         {showSendNow && (
           <button
             className="msg-btn send-now"
             onClick={() => onSendNow(message)}
+            title="Send this message immediately"
           >
             Send now
           </button>
@@ -132,6 +121,7 @@ export function MessageCard({
           <button
             className="msg-btn delete"
             onClick={() => onDelete(message)}
+            title="Remove this message from the list"
           >
             Delete
           </button>
