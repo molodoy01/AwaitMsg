@@ -1,11 +1,16 @@
 const fs = require('fs');
 const path = require('path');
-const { app } = require('electron');
+const { app, safeStorage } = require('electron');
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
 
 const DEFAULT_PRODUCTION_API_ID = String(process.env.API_ID || '32410711');
 const DEFAULT_PRODUCTION_API_HASH = String(process.env.API_HASH || '0ff4fb84d6816badda23acdb9dd78705');
+const TELEGRAM_SECRET_FIELDS = {
+  API_ID: 'API_ID_ENCRYPTED',
+  API_HASH: 'API_HASH_ENCRYPTED',
+  SESSION_STRING: 'SESSION_STRING_ENCRYPTED'
+};
 
 function normalizeSessionString(value) {
   return typeof value === 'string'
@@ -13,21 +18,46 @@ function normalizeSessionString(value) {
     : '';
 }
 
+function isSafeStorageAvailable() {
+  return Boolean(safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable());
+}
+
+function encryptSecret(secret) {
+  if (!isSafeStorageAvailable()) {
+    throw new Error('Secure local storage is unavailable on this system.');
+  }
+
+  return safeStorage.encryptString(String(secret ?? '')).toString('base64');
+}
+
+function decryptSecret(secret) {
+  if (!secret || !isSafeStorageAvailable()) {
+    return '';
+  }
+
+  try {
+    return safeStorage.decryptString(Buffer.from(secret, 'base64')).trim();
+  } catch (error) {
+    console.error('Telegram secret decryption failed:', error);
+    return '';
+  }
+}
+
 function getConfigSnapshot() {
   const current = readSecureConfig();
 
   return {
-    API_ID: current.API_ID ?? process.env.API_ID ?? '',
-    API_HASH: current.API_HASH ?? process.env.API_HASH ?? '',
-    SESSION_STRING: current.SESSION_STRING ?? process.env.SESSION_STRING ?? ''
+    API_ID: getSecretValueFromConfig(current, 'API_ID'),
+    API_HASH: getSecretValueFromConfig(current, 'API_HASH'),
+    SESSION_STRING: normalizeSessionString(getSecretValueFromConfig(current, 'SESSION_STRING'))
   };
 }
 
 function updateRuntimeSecretsFromConfig(nextConfig = readSecureConfig()) {
-  const apiId = nextConfig.API_ID ?? process.env.API_ID;
-  const apiHash = nextConfig.API_HASH ?? process.env.API_HASH;
+  const apiId = getSecretValueFromConfig(nextConfig, 'API_ID');
+  const apiHash = getSecretValueFromConfig(nextConfig, 'API_HASH');
   const sessionString = normalizeSessionString(
-    nextConfig.SESSION_STRING ?? process.env.SESSION_STRING
+    getSecretValueFromConfig(nextConfig, 'SESSION_STRING')
   );
 
   if (apiId) {
@@ -55,8 +85,20 @@ function writeSecureConfig(data) {
     'awaitmsg-secure-config.json'
   );
 
+  const nextConfig = { ...(data || {}) };
+
+  Object.entries(TELEGRAM_SECRET_FIELDS).forEach(([plainKey, encryptedKey]) => {
+    const plainValue = nextConfig[plainKey];
+
+    delete nextConfig[plainKey];
+
+    if (plainValue !== undefined && plainValue !== null && plainValue !== '') {
+      nextConfig[encryptedKey] = encryptSecret(plainValue);
+    }
+  });
+
   try {
-    fs.writeFileSync(secureConfigPath, JSON.stringify(data, null, 2));
+    fs.writeFileSync(secureConfigPath, JSON.stringify(nextConfig, null, 2));
     return true;
   } catch (error) {
     console.error('Secure config write failed:', error);
@@ -64,14 +106,33 @@ function writeSecureConfig(data) {
   }
 }
 
+function getSecretValueFromConfig(config, key) {
+  const encryptedKey = TELEGRAM_SECRET_FIELDS[key];
+
+  if (encryptedKey && config[encryptedKey]) {
+    return decryptSecret(config[encryptedKey]);
+  }
+
+  return config[key] ?? '';
+}
+
 function setSecretValue(key, value) {
   const secureConfig = readSecureConfig();
   const nextConfig = { ...secureConfig };
+  const encryptedKey = TELEGRAM_SECRET_FIELDS[key];
 
   if (value === undefined || value === null || value === '') {
     delete nextConfig[key];
+    if (encryptedKey) {
+      delete nextConfig[encryptedKey];
+    }
   } else {
-    nextConfig[key] = value;
+    delete nextConfig[key];
+    if (encryptedKey) {
+      nextConfig[encryptedKey] = encryptSecret(value);
+    } else {
+      nextConfig[key] = value;
+    }
   }
 
   writeSecureConfig(nextConfig);
@@ -105,11 +166,43 @@ function readSecureConfig() {
   }
 }
 
+function migrateLegacyTelegramSecretsIfNeeded() {
+  if (!isSafeStorageAvailable()) {
+    return;
+  }
+
+  const config = readSecureConfig();
+  const hasLegacyPlaintextSecrets = ['API_ID', 'API_HASH', 'SESSION_STRING'].some(
+    (key) => {
+      const value = config[key];
+      return value !== undefined && value !== null && value !== '';
+    }
+  );
+
+  if (!hasLegacyPlaintextSecrets) {
+    return;
+  }
+
+  const nextConfig = { ...config };
+
+  Object.entries(TELEGRAM_SECRET_FIELDS).forEach(([key, encryptedKey]) => {
+    const plainValue = nextConfig[key];
+
+    if (plainValue !== undefined && plainValue !== null && plainValue !== '') {
+      nextConfig[encryptedKey] = encryptSecret(plainValue);
+      delete nextConfig[key];
+    }
+  });
+
+  writeSecureConfig(nextConfig);
+}
+
 function getSecretValue(key) {
   const secureConfig = readSecureConfig();
+  const configValue = getSecretValueFromConfig(secureConfig, key);
 
-  if (secureConfig[key]) {
-    return secureConfig[key];
+  if (configValue) {
+    return configValue;
   }
 
   if (process.env[key]) {
@@ -126,6 +219,8 @@ function getSecretValue(key) {
 
   return undefined;
 }
+
+migrateLegacyTelegramSecretsIfNeeded();
 
 let runtimeApiId = Number(getSecretValue('API_ID'));
 let runtimeApiHash = getSecretValue('API_HASH');
@@ -145,10 +240,10 @@ function refreshRuntimeSecrets() {
 
 function getTelegramConfig() {
   const config = readSecureConfig();
-  const apiId = config.API_ID ?? process.env.API_ID;
-  const apiHash = config.API_HASH ?? process.env.API_HASH;
+  const apiId = getSecretValueFromConfig(config, 'API_ID') || process.env.API_ID;
+  const apiHash = getSecretValueFromConfig(config, 'API_HASH') || process.env.API_HASH;
   const sessionString = normalizeSessionString(
-    config.SESSION_STRING ?? process.env.SESSION_STRING
+    getSecretValueFromConfig(config, 'SESSION_STRING') || process.env.SESSION_STRING
   );
 
   return {
@@ -192,8 +287,15 @@ async function saveTelegramCredentials(data = {}) {
 async function clearTelegramSession() {
   const secureConfig = readSecureConfig();
   const nextConfig = { ...secureConfig };
+  const clientToClear = client;
+  const pendingClientToClear = pendingLogin?.client;
+
+  stopTelegramReconnect();
+  client = null;
+  pendingLogin = null;
 
   delete nextConfig.SESSION_STRING;
+  delete nextConfig.SESSION_STRING_ENCRYPTED;
 
   const configSaved = writeSecureConfig(nextConfig);
 
@@ -201,27 +303,31 @@ async function clearTelegramSession() {
     throw new Error('Telegram session could not be cleared from secure storage.');
   }
 
-  if (pendingLogin?.client) {
+  if (pendingClientToClear) {
     try {
-      await pendingLogin.client.disconnect();
+      await pendingClientToClear.disconnect();
     } catch (error) {
       console.error('Error clearing pending Telegram login:', error);
     }
   }
 
-  pendingLogin = null;
-
-  if (client) {
+  if (clientToClear) {
     try {
-      if (client.connected) {
-        await client.disconnect();
+      if (clientToClear.connected) {
+        await clientToClear.logOut();
+      } else {
+        await clientToClear.disconnect();
       }
     } catch (error) {
-      console.error('Error disconnecting Telegram client during session clear:', error);
+      console.error('Telegram server logout failed; continuing local cleanup:', error);
+      try {
+        await clientToClear.disconnect();
+      } catch (disconnectError) {
+        console.error('Error disconnecting Telegram client during session clear:', disconnectError);
+      }
     }
   }
 
-  client = null;
   runtimeSessionString = '';
   process.env.SESSION_STRING = '';
 
@@ -277,6 +383,10 @@ async function loginUser(params = {}) {
       apiId: loginApiId,
       apiHash: String(apiHashValue)
     }, phone);
+
+    console.log('sendCode success');
+    console.log(`isCodeViaApp: ${sendCodeResult.isCodeViaApp === true}`);
+    console.log(`phoneCodeHash present: ${Boolean(sendCodeResult.phoneCodeHash)}`);
 
     pendingLogin = {
       client: loginClient,
@@ -392,7 +502,9 @@ async function loginUser(params = {}) {
 
     runtimeSessionString = savedSession;
     process.env.SESSION_STRING = savedSession;
+    client = loginClient;
     pendingLogin = null;
+    startTelegramReconnect();
 
     return {
       success: true,
@@ -402,7 +514,7 @@ async function loginUser(params = {}) {
       nextStep: 'done'
     };
   } finally {
-    if (!pendingLogin) {
+    if (!pendingLogin && client !== loginClient) {
       try {
         await loginClient.disconnect();
       } catch (error) {
@@ -415,6 +527,7 @@ async function loginUser(params = {}) {
 let client = null;
 let pendingLogin = null;
 let reconnectTimer = null;
+let reconnectGeneration = 0;
 let reconnectInProgress = false;
 let telegramStatusCallback = null;
 
@@ -602,11 +715,17 @@ function startTelegramReconnect() {
     return;
   }
 
+  const watchdogGeneration = reconnectGeneration;
+  const watchdogClient = client;
   let internetWasOffline = false;
 
    reconnectTimer = setInterval(async () => {
 
-    if (!client) {
+    if (
+      reconnectGeneration !== watchdogGeneration ||
+      client !== watchdogClient ||
+      !client
+    ) {
       return;
     }
 
@@ -614,7 +733,11 @@ function startTelegramReconnect() {
      return;
    }
 
-    if (!client) {
+    if (
+      reconnectGeneration !== watchdogGeneration ||
+      client !== watchdogClient ||
+      !client
+    ) {
       return;
     }
 
@@ -650,7 +773,12 @@ function startTelegramReconnect() {
         // После физического обрыва teleproto может
         // продолжать считать соединение активным.
 
-        await reconnectTelegram();
+        if (
+          reconnectGeneration === watchdogGeneration &&
+          client === watchdogClient
+        ) {
+          await reconnectTelegram();
+        }
       }
 
     } catch (error) {
@@ -672,6 +800,17 @@ function startTelegramReconnect() {
     }
 
   }, 3000);
+}
+
+function stopTelegramReconnect() {
+  reconnectGeneration += 1;
+
+  if (reconnectTimer) {
+    clearInterval(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  reconnectInProgress = false;
 }
 
 // =========================================================

@@ -52,57 +52,44 @@ export function MessageCard({
 
         <div className="message-rail-line" />
 
-        <div className="message-rail-end">
-          <svg
-            className="message-rail-check"
-            viewBox="0 0 12 12"
-            width="12"
-            height="12"
-            fill="none"
-          >
-            <path
-              d="M2.2 6.2L4.9 8.8L9.8 3.2"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
       </div>
 
       <div className="message-body">
-        <div className="message-chat">
-          {message.chatName}
+        <div className="message-header">
+          <div className="message-chat">
+            {message.chatName}
+          </div>
         </div>
 
-        {showCreatedMeta && (
-          <div className="message-created-meta">
-            <span className="message-created-rail" />
-            <span>{createdLabel}</span>
+        <div className="message-meta-row">
+          <div className="message-meta">
+            {formatDateTime(message.when)}
           </div>
-        )}
 
-        <div className="message-meta">
-          {formatDateTime(message.when)}
+          <div
+            className={`message-status ${message.status}`}
+          >
+            {isCanceling
+              ? 'Unscheduling…'
+              : isSending
+                ? 'Sending…'
+                : message.status === 'sent'
+                  ? 'Sent'
+                  : message.status === 'confirmed'
+                    ? 'Confirmed'
+                    : 'Scheduled'}
+          </div>
+
+          {showCreatedMeta && (
+            <div className="message-created-meta">
+              <span className="message-created-rail" />
+              <span>{createdLabel}</span>
+            </div>
+          )}
         </div>
 
         <div className="message-preview">
           {message.text}
-        </div>
-
-        <div
-          className={`message-status ${message.status}`}
-        >
-          {isCanceling
-            ? 'Unscheduling…'
-            : isSending
-              ? 'Sending…'
-              : message.status === 'sent'
-                ? 'Sent'
-                : message.status === 'confirmed'
-                  ? 'Confirmed'
-                  : 'Scheduled'}
         </div>
       </div>
 

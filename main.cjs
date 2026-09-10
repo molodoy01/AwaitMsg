@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
 
 const DEFAULT_PRODUCTION_API_ID = String(process.env.API_ID || '32410711');
 const DEFAULT_PRODUCTION_API_HASH = String(process.env.API_HASH || '0ff4fb84d6816badda23acdb9dd78705');
@@ -28,6 +28,84 @@ function writeSecureConfig(data) {
   } catch (error) {
     console.error('Secure config write failed:', error);
   }
+}
+
+const GEMINI_KEY_FIELD = 'GEMINI_API_KEY_ENCRYPTED';
+const AI_ASSISTANT_ENABLED_FIELD = 'AI_ASSISTANT_ENABLED';
+
+function getGeminiKey() {
+  const config = readSecureConfig();
+  const encryptedKey = config[GEMINI_KEY_FIELD];
+
+  if (!encryptedKey || !safeStorage.isEncryptionAvailable()) {
+    return '';
+  }
+
+  try {
+    return safeStorage.decryptString(Buffer.from(encryptedKey, 'base64')).trim();
+  } catch (error) {
+    console.error('Gemini key decryption failed:', error);
+    return '';
+  }
+}
+
+function getGeminiKeyMask(key) {
+  return key ? `••••••••${key.slice(-4)}` : '';
+}
+
+function getGeminiSettings() {
+  const key = getGeminiKey();
+  const config = readSecureConfig();
+  const enabled = config[AI_ASSISTANT_ENABLED_FIELD] ?? true;
+
+  return {
+    hasKey: Boolean(key),
+    maskedKey: getGeminiKeyMask(key),
+    enabled: enabled === true,
+    encryptionAvailable: safeStorage.isEncryptionAvailable()
+  };
+}
+
+function saveGeminiKey(key) {
+  const normalizedKey = typeof key === 'string' ? key.trim() : '';
+
+  if (!normalizedKey) {
+    throw new Error('Gemini API key is required.');
+  }
+
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure local storage is unavailable on this system.');
+  }
+
+  const config = readSecureConfig();
+  const encryptedKey = safeStorage.encryptString(normalizedKey).toString('base64');
+
+  writeSecureConfig({
+    ...config,
+    [GEMINI_KEY_FIELD]: encryptedKey
+  });
+
+  return getGeminiSettings();
+}
+
+function removeGeminiKey() {
+  const config = readSecureConfig();
+  const nextConfig = { ...config };
+
+  delete nextConfig[GEMINI_KEY_FIELD];
+  writeSecureConfig(nextConfig);
+
+  return getGeminiSettings();
+}
+
+function setGeminiEnabled(enabled) {
+  const config = readSecureConfig();
+  writeSecureConfig({
+    ...config,
+    [AI_ASSISTANT_ENABLED_FIELD]: Boolean(enabled)
+  });
+
+  return getGeminiSettings();
 }
 
 function syncSecureEnv() {
@@ -95,6 +173,9 @@ function loadProductionSecrets() {
 loadProductionSecrets();
 syncSecureEnv();
 
+const DEV_MODE = process.env.DEV_MODE === 'true' && !app.isPackaged;
+process.env.DEV_MODE = DEV_MODE ? 'true' : 'false';
+
 function shouldLoadProductionBuild() {
   return app.isPackaged || process.env.npm_lifecycle_event === 'start';
 }
@@ -137,19 +218,46 @@ const {
   cancelScheduledMessage,
   setTelegramStatusCallback
 } = require('./telegram.cjs');
+const { generateGeminiContent } = require('./gemini.cjs');
 
 setTelegramStatusCallback((status) => {
   sendTelegramStatus(status);
 });
 
+function isTrustedRenderer(event) {
+  const senderUrl = event.senderFrame?.url || '';
+
+  return (
+    senderUrl.startsWith('file://') ||
+    senderUrl.startsWith('http://localhost:5173') ||
+    senderUrl.startsWith('http://127.0.0.1:5173')
+  );
+}
+
+function getGeminiErrorCode(error) {
+  const status = error && typeof error === 'object' ? error.status : undefined;
+  const details = error instanceof Error ? error.message : String(error);
+
+  if (
+    status === 429 ||
+    /\b429\b|quota|rate limit|resource exhausted|too many requests/i.test(details)
+  ) {
+    return 'quota';
+  }
+
+  return 'generic';
+}
+
 
 function createWindow() {
    mainWindow = new BrowserWindow({
+    title: 'AwaitMsg',
     width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#11110f',
+    autoHideMenuBar: true,
 
     webPreferences: {
       contextIsolation: true,
@@ -166,6 +274,74 @@ function createWindow() {
     mainWindow.loadURL(appUrl);
   }
 }
+
+ipcMain.handle('gemini-generate', async (event, data = {}) => {
+  if (!isTrustedRenderer(event)) {
+    return { success: false, error: 'Untrusted renderer.' };
+  }
+
+  try {
+    const apiKey = getGeminiKey();
+
+    if (!apiKey) {
+      return { success: false, errorCode: 'setup_required' };
+    }
+
+    const result = await generateGeminiContent(data.prompt, {
+      context: data.context,
+      apiKey
+    });
+
+    return {
+      success: true,
+      intent: result
+    };
+  } catch (error) {
+    console.error('Gemini generation error:', error);
+
+    return {
+      success: false,
+      errorCode: getGeminiErrorCode(error)
+    };
+  }
+});
+
+ipcMain.handle('gemini-settings-status', async () => {
+  return getGeminiSettings();
+});
+
+ipcMain.handle('gemini-save-key', async (event, key) => {
+  try {
+    return { success: true, settings: saveGeminiKey(key) };
+  } catch (error) {
+    console.error('Gemini key save failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Gemini key could not be saved.'
+    };
+  }
+});
+
+ipcMain.handle('gemini-remove-key', async () => {
+  try {
+    return { success: true, settings: removeGeminiKey() };
+  } catch (error) {
+    console.error('Gemini key removal failed:', error);
+    return { success: false, error: 'Gemini key could not be removed.' };
+  }
+});
+
+ipcMain.handle('gemini-set-enabled', async (event, enabled) => {
+  try {
+    return { success: true, settings: setGeminiEnabled(enabled === true) };
+  } catch (error) {
+    console.error('AI Assistant setting update failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'AI Assistant setting could not be updated.'
+    };
+  }
+});
 
 ipcMain.handle('telegram-connect', async () => {
   try {

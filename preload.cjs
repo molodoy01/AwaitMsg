@@ -2,6 +2,10 @@ console.log('>>> PRELOAD LOADED <<<');
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+contextBridge.exposeInMainWorld('appConfig', {
+  devMode: process.env.DEV_MODE === 'true'
+});
+
 contextBridge.exposeInMainWorld('telegram', {
 
   getConfig: () =>
@@ -61,4 +65,17 @@ contextBridge.exposeInMainWorld('telegram', {
 
   }
 
+});
+
+contextBridge.exposeInMainWorld('gemini', {
+  generate: (prompt, context) =>
+    ipcRenderer.invoke('gemini-generate', { prompt, context }),
+  getSettings: () =>
+    ipcRenderer.invoke('gemini-settings-status'),
+  saveKey: (key) =>
+    ipcRenderer.invoke('gemini-save-key', key),
+  removeKey: () =>
+    ipcRenderer.invoke('gemini-remove-key'),
+  setEnabled: (enabled) =>
+    ipcRenderer.invoke('gemini-set-enabled', enabled)
 });

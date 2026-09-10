@@ -32,6 +32,7 @@ export function MessagesPanel({
   sendingIds,
 }: Props) {
   const [showOlderUpcoming, setShowOlderUpcoming] = useState(false);
+  const [showOlderSent, setShowOlderSent] = useState(false);
 
   const upcomingSorted = [...upcoming].sort(
     (a, b) =>
@@ -47,6 +48,9 @@ export function MessagesPanel({
       new Date(b.sentAt || b.when).getTime() -
       new Date(a.sentAt || a.when).getTime()
   );
+
+  const recentSent = sentSorted.slice(0, 3);
+  const olderSent = sentSorted.slice(3);
 
   return (
     <div className="messages-panel">
@@ -145,7 +149,7 @@ export function MessagesPanel({
                   className="upcoming-older-toggle"
                   onClick={() => setShowOlderUpcoming((value) => !value)}
                 >
-                  {showOlderUpcoming ? 'Hide older moments' : 'Show older moments'}
+                  {showOlderUpcoming ? 'Show less' : 'Show more'}
                 </button>
               </div>
             )}
@@ -194,12 +198,12 @@ export function MessagesPanel({
           </div>
         ) : (
           <div className="message-list">
-            {sentSorted.map((msg, i) => (
+            {recentSent.map((msg, i) => (
               <MessageCard
                 key={msg.id}
                 message={msg}
                 isLast={
-                  i === sentSorted.length - 1
+                  i === recentSent.length - 1
                 }
                 onCancel={onCancel}
                 onSendNow={onSendNow}
@@ -211,6 +215,37 @@ export function MessagesPanel({
                 isRevealing={revealingId === msg.id}
               />
             ))}
+
+            {olderSent.length > 0 && (
+              <div className="upcoming-older-toggle-wrap">
+                <button
+                  type="button"
+                  className="upcoming-older-toggle"
+                  onClick={() => setShowOlderSent((value) => !value)}
+                >
+                  {showOlderSent ? 'Show less' : 'Show more'}
+                </button>
+              </div>
+            )}
+
+            {showOlderSent &&
+              olderSent.map((msg, i) => (
+                <MessageCard
+                  key={msg.id}
+                  message={msg}
+                  isLast={
+                    i === olderSent.length - 1
+                  }
+                  onCancel={onCancel}
+                  onSendNow={onSendNow}
+                  onDelete={onDelete}
+                  showCancel={false}
+                  showSendNow={false}
+                  showDelete={true}
+                  railColor="#6f9b7c"
+                  isRevealing={revealingId === msg.id}
+                />
+              ))}
           </div>
         )}
       </div>
