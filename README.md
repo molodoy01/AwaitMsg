@@ -17,6 +17,7 @@ No complicated setup. No extra bots. Just your Telegram account and a message wa
 ### What you can do
 
 * Write and schedule messages
+* Use AI Assistant to help prepare your messages
 * See what is waiting to be sent
 * Cancel scheduled messages
 * Keep track of what you've sent
