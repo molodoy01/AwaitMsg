@@ -27,10 +27,4 @@ AwaitMsg is made for those small messages that are better sent later.
 
 **Windows · v2.1.3**
 
-## Download
-
-<<<<<<< HEAD
 [Download AwaitMsg 2.1.3](../../releases/tag/v2.1.3)
-=======
-[Download AwaitMsg 2.1.0](../../releases/tag/v2.1.0)
->>>>>>> origin/master
