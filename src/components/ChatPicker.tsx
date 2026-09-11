@@ -86,9 +86,9 @@ export function ChatPicker({
   }
 
   return (
-    <div className="chat-picker" ref={containerRef}>
+    <div className={`chat-picker ${open ? 'is-open' : ''}`} ref={containerRef}>
       <div
-        className="chat-picker-current"
+        className={`chat-picker-current ${open ? 'is-open' : ''}`}
         onClick={() => setOpen(!open)}
         tabIndex={0}
         role="button"

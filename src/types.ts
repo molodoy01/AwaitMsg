@@ -10,7 +10,8 @@ export interface ScheduledMessage {
   text: string;
   when: string;
   createdAt: string;
-  status: 'scheduled' | 'confirmed' | 'sent';
+  status: 'pending' | 'scheduled' | 'confirmed' | 'sent';
+  operationId?: string;
   sentAt?: string;
   telegramMessageId?: string | number;
 }

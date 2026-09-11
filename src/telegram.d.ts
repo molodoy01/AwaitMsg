@@ -59,6 +59,7 @@ declare global {
     };
     appConfig?: {
       devMode: boolean;
+      temporaryAuthBypass: boolean;
     };
     telegram: {
       getConfig: () => Promise<{ success: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; error?: string }>;

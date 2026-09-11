@@ -21,11 +21,17 @@ import {
   getCurrentTimeStr,
   getTimezoneLabel,
 } from '@/lib/utils';
+import {
+  applyScheduleResult,
+  createPendingSchedule,
+  getPendingSchedules,
+} from '@/lib/scheduling';
 import { Notification } from '@/components/Notification';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
-import { LogOut, Settings as SettingsIcon } from 'lucide-react';
+import { SettingsView } from '@/components/SettingsView';
+import { ArrowRightToLine } from 'lucide-react';
 
 type AssistantIntent = NonNullable<
   Awaited<ReturnType<Window['gemini']['generate']>>['intent']
@@ -72,7 +78,7 @@ function App() {
   const [assistantIntent, setAssistantIntent] = useState<AssistantIntent | null>(null);
   const [assistantExampleIndex, setAssistantExampleIndex] = useState(0);
   const [isThinking, setIsThinking] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [geminiSettings, setGeminiSettings] = useState<GeminiSettings>({
     hasKey: false,
     maskedKey: '',
@@ -98,6 +104,7 @@ function App() {
   const [twoFactorPassword, setTwoFactorPassword] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [isConfirmingLogout, setIsConfirmingLogout] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [successPulse, setSuccessPulse] = useState(false);
   const [revealingId, setRevealingId] = useState<string | null>(null);
@@ -380,6 +387,7 @@ function App() {
         const value = status as {
           connected?: boolean;
           status?: string;
+          error?: string;
         };
 
         if (typeof value.connected === 'boolean') {
@@ -390,6 +398,12 @@ function App() {
           setConnected(true);
           setConnecting(false);
         }
+
+          if (value.status === 'reauth_required') {
+            setConnected(false);
+            setConnecting(false);
+            setAuthError(value.error || 'Telegram session expired. Please sign in again.');
+          }
 
         if (
           value.status === 'disconnected' ||
@@ -463,6 +477,61 @@ function App() {
   }, [connected, isDevMode]);
 
   useEffect(() => {
+    if (!connected || isDevMode) return;
+
+    let cancelled = false;
+
+    async function recoverPendingSchedules() {
+      const pendingMessages = getPendingSchedules(loadUpcoming());
+
+      for (const pendingMessage of pendingMessages) {
+        const result = await window.telegram.schedule({
+          chatId: pendingMessage.chatId,
+          message: pendingMessage.text,
+          targetTimestamp: Math.floor(
+            new Date(pendingMessage.when).getTime() / 1000
+          ),
+        });
+
+        if (cancelled) return;
+
+        setUpcoming((current) => {
+          const updated = result.success
+            ? applyScheduleResult(current, pendingMessage.operationId!, result)
+            : current;
+
+          saveUpcoming(updated);
+          return updated;
+        });
+
+        if (!result.success) {
+          showNotification(
+            result.error || 'Pending message could not be scheduled.',
+            'error',
+            'Scheduling failed'
+          );
+        }
+      }
+    }
+
+    recoverPendingSchedules().catch((error) => {
+      if (!cancelled) {
+        showNotification(
+          error instanceof Error
+            ? error.message
+            : 'Pending message could not be recovered.',
+          'error',
+          'Scheduling failed'
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, isDevMode, showNotification]);
+
+  useEffect(() => {
     const moveDueMessages = () => {
       const now = Date.now();
       const dueMessages = upcoming.filter(
@@ -497,7 +566,7 @@ function App() {
       });
 
       setRevealingId(dueMessages[0].id);
-      window.setTimeout(() => setRevealingId(null), 3500);
+      window.setTimeout(() => setRevealingId(null), 1500);
     };
 
     moveDueMessages();
@@ -631,6 +700,22 @@ function App() {
     const chatId = scheduleChat.id;
     const chatName = scheduleChat.name;
     const text = scheduleMessage;
+    const operationId = uid();
+
+    if (!isDevMode) {
+      const pendingMessage = createPendingSchedule({
+        operationId,
+        chatId,
+        chatName,
+        text,
+        when: whenISO,
+        createdAt: new Date().toISOString(),
+      });
+
+      const updated = [...upcoming, pendingMessage];
+      setUpcoming(updated);
+      saveUpcoming(updated);
+    }
 
     if (isDevMode) {
       const newMessageId = uid();
@@ -657,7 +742,7 @@ function App() {
 
       window.setTimeout(() => {
         setSuccessPulse(false);
-      }, 3500);
+      }, 1500);
       return;
     }
 
@@ -675,31 +760,23 @@ function App() {
           const telegramMessageId =
             result.telegramMessageId ?? result.id;
 
-          const newMessageId = uid();
+          setUpcoming((current) => {
+            const updated = applyScheduleResult(current, operationId, {
+              success: true,
+              telegramMessageId,
+            });
 
-          const newMsg: ScheduledMessage = {
-            id: newMessageId,
-            chatId,
-            chatName,
-            text,
-            when: whenISO,
-            createdAt: new Date().toISOString(),
-            status: 'scheduled',
-            telegramMessageId,
-          };
-
-          const updated = [...upcoming, newMsg];
-
-          setUpcoming(updated);
-          saveUpcoming(updated);
+            saveUpcoming(updated);
+            return updated;
+          });
 
           if (result.confirmed) {
-            setRevealingId(newMessageId);
+            setRevealingId(operationId);
 
             window.setTimeout(() => {
               setUpcoming((current) => {
                 const confirmed = current.map((item) =>
-                  item.id === newMessageId
+                  item.operationId === operationId
                     ? { ...item, status: 'confirmed' as const }
                     : item
                 );
@@ -708,7 +785,7 @@ function App() {
                 return confirmed;
               });
               setRevealingId(null);
-            }, 3500);
+            }, 4500);
           }
 
           setMessage('');
@@ -720,7 +797,7 @@ function App() {
 
           window.setTimeout(() => {
             setSuccessPulse(false);
-          }, 3500);
+          }, 1500);
         } else {
           showNotification(
             result.error || 'Failed to schedule message.',
@@ -848,7 +925,7 @@ function App() {
       saveSent(updatedSent);
 
       setRevealingId(msg.id);
-      window.setTimeout(() => setRevealingId(null), 3500);
+      window.setTimeout(() => setRevealingId(null), 1500);
       return;
     }
 
@@ -889,7 +966,7 @@ function App() {
           saveSent(updatedSent);
 
           setRevealingId(msg.id);
-          window.setTimeout(() => setRevealingId(null), 3500);
+          window.setTimeout(() => setRevealingId(null), 1500);
         } else {
           showNotification(
             result.error || 'Failed to send.',
@@ -916,10 +993,7 @@ function App() {
   }
 
   function handleDeleteMessage(msg: ScheduledMessage) {
-    if (
-      msg.status === 'scheduled' ||
-      msg.status === 'confirmed'
-    ) {
+    if (msg.status !== 'sent') {
       const updated = upcoming.filter(
         (item) => item.id !== msg.id
       );
@@ -1056,7 +1130,8 @@ function App() {
       }
 
       setConnected(false);
-      setSettingsOpen(false);
+      setIsConfirmingLogout(false);
+      setIsSettingsOpen(false);
       setChats([]);
       setSelectedChat(null);
       saveChats([]);
@@ -1072,6 +1147,23 @@ function App() {
     } finally {
       setAuthBusy(false);
     }
+  }
+
+  if (isSettingsOpen) {
+    return (
+      <SettingsView
+        onClose={() => setIsSettingsOpen(false)}
+        connected={connected}
+        geminiSettings={geminiSettings}
+        settingsKey={settingsKey}
+        settingsBusy={settingsBusy}
+        settingsError={settingsError}
+        onSettingsKeyChange={setSettingsKey}
+        onSaveGeminiKey={handleSaveGeminiKey}
+        onRemoveGeminiKey={handleRemoveGeminiKey}
+        onToggleAssistant={handleToggleAssistant}
+      />
+    );
   }
 
   return (
@@ -1103,126 +1195,50 @@ function App() {
       <div className="app">
         <header className="topbar">
           <div className="topbar-identity">
-            <div className="status">
-              <span className="status-mark" aria-hidden="true">
-                <i />
-              </span>
-            </div>
-
             <div className="brand">
               AWAITMSG
             </div>
           </div>
 
           <div className="topbar-actions">
-            <button
-              className="settings-action"
-              onClick={() => {
-                setSettingsError('');
-                setSettingsOpen((open) => !open);
-              }}
-              title="Settings"
-              aria-label="Settings"
-            >
-              <SettingsIcon size={14} strokeWidth={1.7} />
-            </button>
-
             {connected && !isDevMode && (
-              <button
-                className="account-action"
-                onClick={handleDisconnect}
-                disabled={authBusy}
-                title="Log out"
-                aria-label="Log out"
-              >
-                <LogOut size={14} strokeWidth={1.7} />
-              </button>
+              isConfirmingLogout ? (
+                <div className="logout-confirmation">
+                  <span>Log out?</span>
+                  <button
+                    type="button"
+                    className="logout-confirmation-action"
+                    onClick={() => setIsConfirmingLogout(false)}
+                    disabled={authBusy}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="logout-confirmation-action is-confirm"
+                    onClick={handleDisconnect}
+                    disabled={authBusy}
+                  >
+                    Log out
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="account-action"
+                  onClick={() => setIsConfirmingLogout(true)}
+                  disabled={authBusy}
+                  title="Log out"
+                  aria-label="Log out"
+                >
+                  <span className="action-icon" aria-hidden="true"><ArrowRightToLine size={16} strokeWidth={1.8} /></span>
+                  <span className="action-label">Log out</span>
+                </button>
+              )
             )}
           </div>
         </header>
 
-        {settingsOpen ? (
-          <section className="settings-panel" aria-label="Settings">
-            <div className="settings-heading">
-              <div>
-                <div className="settings-kicker">Settings</div>
-                <h1>Make it yours.</h1>
-              </div>
-              <button
-                className="settings-close"
-                type="button"
-                onClick={() => setSettingsOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-section-label">ABOUT</div>
-              <p>AwaitMsg keeps your Telegram messages ready for the right moment.</p>
-              <div className="settings-meta">
-                <span>Version 2.1.0</span>
-              </div>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-section-label">AI ASSISTANT</div>
-              <p>Create scheduled messages from natural language.</p>
-              <button
-                className={`settings-toggle ${geminiSettings.enabled ? 'is-on' : ''}`}
-                type="button"
-                onClick={handleToggleAssistant}
-                disabled={settingsBusy}
-                aria-pressed={geminiSettings.enabled}
-              >
-                <span>AI Assistant</span>
-                <strong>{geminiSettings.enabled ? 'ON' : 'OFF'}</strong>
-              </button>
-
-              <div className="settings-key-group">
-                <div className="settings-subsection-label">Gemini API Key</div>
-                <p>Your key, your quota.</p>
-
-                {geminiSettings.hasKey && !settingsKey ? (
-                  <div className="settings-key-saved">
-                    <span>{geminiSettings.maskedKey}</span>
-                    <div className="settings-key-actions">
-                      <button type="button" onClick={() => setSettingsKey(' ')}>
-                        Change key
-                      </button>
-                      <button type="button" onClick={handleRemoveGeminiKey} disabled={settingsBusy}>
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="settings-key-entry">
-                    <input
-                      type="password"
-                      value={settingsKey.trim()}
-                      onChange={(event) => setSettingsKey(event.target.value)}
-                      placeholder="Paste your Gemini API key"
-                      autoComplete="off"
-                    />
-                    <button type="button" onClick={handleSaveGeminiKey} disabled={!settingsKey.trim() || settingsBusy}>
-                      Save key
-                    </button>
-                  </div>
-                )}
-
-                <a
-                  className="settings-link"
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Get API key →
-                </a>
-              </div>
-              {settingsError && <p className="settings-error">{settingsError}</p>}
-            </div>
-          </section>
-        ) : !connected && !connecting ? (
+        {!connected && !connecting ? (
           <section className="auth-panel">
             <div className="auth-kicker">Your message</div>
             <h1>Connect your space.</h1>
@@ -1335,9 +1351,16 @@ function App() {
               }}
               placeholder={assistantExamples[assistantExampleIndex]}
               aria-label="Ask AwaitMsg Assistant"
+              title="Напишите задачу — AI поможет сформулировать сообщение и запланировать его."
               rows={2}
             />
-            <button type="submit" aria-label="Send to AI Assistant">→</button>
+            <button
+              type="submit"
+              aria-label="Send to AI Assistant"
+              title="Отправить запрос к AI Assistant"
+            >
+              →
+            </button>
               </form>
 
               {isThinking && (
@@ -1422,7 +1445,7 @@ function App() {
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="What should be said when the moment arrives?"
+                placeholder="What should the message say when the moment arrives?"
                 maxLength={4096}
               />
             </div>
@@ -1515,7 +1538,7 @@ function App() {
 
 
         <footer>
-          <span>AwaitMsg</span>
+          <span>Version 2.1.0</span>
           <span>{getTimezoneLabel()}</span>
         </footer>
           </>

@@ -77,7 +77,9 @@ export function MessageCard({
                   ? 'Sent'
                   : message.status === 'confirmed'
                     ? 'Confirmed'
-                    : 'Scheduled'}
+                    : message.status === 'pending'
+                      ? 'Pending'
+                      : 'Scheduled'}
           </div>
 
           {showCreatedMeta && (

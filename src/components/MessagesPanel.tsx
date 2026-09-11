@@ -149,7 +149,7 @@ export function MessagesPanel({
                   className="upcoming-older-toggle"
                   onClick={() => setShowOlderUpcoming((value) => !value)}
                 >
-                  {showOlderUpcoming ? 'Show less' : 'Show more'}
+                  {showOlderUpcoming ? 'Show less ↑' : 'Show more ↓'}
                 </button>
               </div>
             )}
@@ -223,7 +223,7 @@ export function MessagesPanel({
                   className="upcoming-older-toggle"
                   onClick={() => setShowOlderSent((value) => !value)}
                 >
-                  {showOlderSent ? 'Show less' : 'Show more'}
+                  {showOlderSent ? 'Show less ↑' : 'Show more ↓'}
                 </button>
               </div>
             )}

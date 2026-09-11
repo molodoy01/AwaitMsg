@@ -4,8 +4,6 @@ const { app, safeStorage } = require('electron');
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
 
-const DEFAULT_PRODUCTION_API_ID = String(process.env.API_ID || '32410711');
-const DEFAULT_PRODUCTION_API_HASH = String(process.env.API_HASH || '0ff4fb84d6816badda23acdb9dd78705');
 const TELEGRAM_SECRET_FIELDS = {
   API_ID: 'API_ID_ENCRYPTED',
   API_HASH: 'API_HASH_ENCRYPTED',
@@ -207,14 +205,6 @@ function getSecretValue(key) {
 
   if (process.env[key]) {
     return process.env[key];
-  }
-
-  if (key === 'API_ID') {
-    return DEFAULT_PRODUCTION_API_ID;
-  }
-
-  if (key === 'API_HASH') {
-    return DEFAULT_PRODUCTION_API_HASH;
   }
 
   return undefined;
@@ -530,8 +520,90 @@ let reconnectTimer = null;
 let reconnectGeneration = 0;
 let reconnectInProgress = false;
 let telegramStatusCallback = null;
+let invalidSessionCleanupPromise = null;
 
 const REQUEST_TIMEOUT = 15000;
+const INVALID_SESSION_MESSAGE = 'Telegram session expired or revoked. Please sign in again.';
+
+function getTelegramErrorText(error) {
+  if (!error) return '';
+
+  return [
+    error.code,
+    error.errorCode,
+    error.errorMessage,
+    error.message,
+    error.name
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isInvalidTelegramSessionError(error) {
+  const text = getTelegramErrorText(error);
+
+  return /AUTH_KEY_UNREGISTERED|AUTH_KEY_INVALID|SESSION_REVOKED|SESSION_EXPIRED|AUTHORIZATION_REVOKED|AUTHORIZATION_EXPIRED|(?:revoked|expired|invalid)\s+(?:telegram\s+)?(?:session|authorization)|(?:telegram\s+)?(?:session|authorization)\s+(?:revoked|expired|invalid)/i.test(text);
+}
+
+async function invalidateTelegramSession() {
+  if (invalidSessionCleanupPromise) {
+    return invalidSessionCleanupPromise;
+  }
+
+  invalidSessionCleanupPromise = (async () => {
+    stopTelegramReconnect();
+
+    const secureConfig = readSecureConfig();
+    delete secureConfig.SESSION_STRING;
+    delete secureConfig.SESSION_STRING_ENCRYPTED;
+    try {
+      writeSecureConfig(secureConfig);
+    } catch (storageError) {
+      console.error('Invalid Telegram session cleanup write failed:', storageError);
+    }
+
+    const clientToClear = client;
+    client = null;
+    pendingLogin = null;
+    runtimeSessionString = '';
+    process.env.SESSION_STRING = '';
+
+    if (clientToClear) {
+      try {
+        await clientToClear.disconnect();
+      } catch (disconnectError) {
+        console.error('Invalid Telegram session disconnect failed:', disconnectError);
+      }
+    }
+
+    notifyTelegramStatus({
+      status: 'reauth_required',
+      connected: false,
+      error: INVALID_SESSION_MESSAGE
+    });
+  })();
+
+  try {
+    await invalidSessionCleanupPromise;
+  } finally {
+    invalidSessionCleanupPromise = null;
+  }
+}
+
+async function telegramRequest(request) {
+  try {
+    return await request();
+  } catch (error) {
+    if (!isInvalidTelegramSessionError(error)) {
+      throw error;
+    }
+
+    await invalidateTelegramSession();
+    const reauthError = new Error(INVALID_SESSION_MESSAGE);
+    reauthError.code = 'TELEGRAM_SESSION_INVALID';
+    throw reauthError;
+  }
+}
 
 // =========================================================
 // TELEGRAM STATUS
@@ -674,11 +746,11 @@ async function reconnectTelegram() {
       'Connecting Telegram again...'
     );
 
-    await withTimeout(
+    await telegramRequest(() => withTimeout(
       client.connect(),
       REQUEST_TIMEOUT,
       'Telegram reconnect'
-    );
+    ));
 
     console.log(
       'Telegram reconnected successfully'
@@ -718,20 +790,10 @@ function startTelegramReconnect() {
   const watchdogGeneration = reconnectGeneration;
   const watchdogClient = client;
   let internetWasOffline = false;
+  let reconnectDelay = 3000;
+  let nextReconnectAt = 0;
 
-   reconnectTimer = setInterval(async () => {
-
-    if (
-      reconnectGeneration !== watchdogGeneration ||
-      client !== watchdogClient ||
-      !client
-    ) {
-      return;
-    }
-
-    if (reconnectInProgress) {
-     return;
-   }
+  reconnectTimer = setInterval(async () => {
 
     if (
       reconnectGeneration !== watchdogGeneration ||
@@ -753,31 +815,34 @@ function startTelegramReconnect() {
 
       await checkInternetConnection();
 
-      // ===================================================
-      // ИНТЕРНЕТ ВОССТАНОВЛЕН
-      // ===================================================
-
       if (internetWasOffline) {
-
         console.log(
           'Internet connection restored'
         );
-
         internetWasOffline = false;
+        internetWasOffline = false;
+        nextReconnectAt = 0;
+        reconnectDelay = 3000;
+      }
 
+      if (
+        !client.connected &&
+        Date.now() >= nextReconnectAt &&
+        reconnectGeneration === watchdogGeneration &&
+        client === watchdogClient
+      ) {
         console.log(
-          'Checking Telegram connection...'
+          `Telegram reconnect attempt (backoff ${reconnectDelay} ms)`
         );
 
-        // Не доверяем client.connected.
-        // После физического обрыва teleproto может
-        // продолжать считать соединение активным.
+        const reconnected = await reconnectTelegram();
 
-        if (
-          reconnectGeneration === watchdogGeneration &&
-          client === watchdogClient
-        ) {
-          await reconnectTelegram();
+        if (reconnected) {
+          reconnectDelay = 3000;
+          nextReconnectAt = 0;
+        } else if (client === watchdogClient) {
+          nextReconnectAt = Date.now() + reconnectDelay;
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
         }
       }
 
@@ -857,11 +922,11 @@ async function connectTelegram() {
 
     try {
 
-      await withTimeout(
+      await telegramRequest(() => withTimeout(
         client.connect(),
         REQUEST_TIMEOUT,
         'Telegram reconnect'
-      );
+      ));
 
       console.log(
         'Telegram reconnected'
@@ -881,7 +946,9 @@ async function connectTelegram() {
         error.message
       );
 
-      notifyTelegramStatus('disconnected');
+      if (error?.code !== 'TELEGRAM_SESSION_INVALID') {
+        notifyTelegramStatus('disconnected');
+      }
 
       throw error;
     }
@@ -902,7 +969,7 @@ async function connectTelegram() {
 
   notifyTelegramStatus('connecting');
 
-  await client.connect();
+  await telegramRequest(() => client.connect());
 
   console.log(
     'Telegram connected'
@@ -929,9 +996,9 @@ async function getChats() {
     await connectTelegram();
   }
 
-  const dialogs = await client.getDialogs({
+  const dialogs = await telegramRequest(() => client.getDialogs({
     limit: 50
-  });
+  }));
 
   const chats = dialogs.map((dialog) => ({
     id: dialog.id?.toString(),
@@ -940,7 +1007,7 @@ async function getChats() {
 
   try {
 
-    const me = await client.getMe();
+    const me = await telegramRequest(() => client.getMe());
 
     const myId = me.id?.toString();
 
@@ -959,6 +1026,10 @@ async function getChats() {
     }
 
   } catch (error) {
+
+    if (error?.code === 'TELEGRAM_SESSION_INVALID') {
+      throw error;
+    }
 
     console.error(
       'Failed to add Saved Messages:',
@@ -985,11 +1056,11 @@ async function getContacts() {
 
   try {
 
-    const result = await client.invoke(
+    const result = await telegramRequest(() => client.invoke(
       new Api.contacts.GetContacts({
         hash: 0
       })
-    );
+    ));
 
     console.log(
       'Telegram contacts received:',
@@ -1105,6 +1176,10 @@ async function resolveChat(query) {
     contacts = await getContacts();
 
   } catch (error) {
+
+    if (error?.code === 'TELEGRAM_SESSION_INVALID') {
+      throw error;
+    }
 
     console.error(
       'Could not load Telegram contacts:',
@@ -1437,7 +1512,7 @@ async function sendMessage(
   try {
 
     const result =
-      await withTimeout(
+      await telegramRequest(() => withTimeout(
         client.sendMessage(
           target,
           {
@@ -1446,7 +1521,7 @@ async function sendMessage(
         ),
         REQUEST_TIMEOUT,
         'Sending Telegram message'
-      );
+      ));
 
     console.log(
       'SEND RESULT:',
@@ -1570,18 +1645,47 @@ async function scheduleMessage(
     scheduledDate
   );
 
-  const sendResult =
-    await withTimeout(
-      client.sendMessage(
-        target,
-        {
-          message,
-          schedule: scheduledDate
-        }
-      ),
-      REQUEST_TIMEOUT,
-      'Scheduling Telegram message'
+  const existingScheduledMessages = await telegramRequest(() => withTimeout(
+    client.getScheduledMessages(target),
+    REQUEST_TIMEOUT,
+    'Checking existing Telegram schedule'
+  ));
+
+  const existingScheduledMessage = existingScheduledMessages.find((msg) => {
+    const msgTimestamp = msg.date instanceof Date
+      ? Math.floor(msg.date.getTime() / 1000)
+      : Number(msg.date);
+
+    return (
+      msg.message === message &&
+      Math.abs(msgTimestamp - scheduledDate) <= 10
     );
+  });
+
+  if (existingScheduledMessage) {
+    console.log(
+      'Existing Telegram scheduled message reused:',
+      existingScheduledMessage.id
+    );
+
+    return {
+      id: existingScheduledMessage.id,
+      telegramMessageId: existingScheduledMessage.id,
+      confirmed: true
+    };
+  }
+
+  const sendResult = await telegramRequest(() => withTimeout(
+    client.sendMessage(
+      target,
+      {
+        message,
+        schedule: scheduledDate
+      }
+    ),
+    REQUEST_TIMEOUT,
+    'Scheduling Telegram message'
+  ));
 
   console.log(
     'Message added to Telegram schedule'
@@ -1608,15 +1712,11 @@ async function scheduleMessage(
     'Verifying Telegram scheduled message...'
   );
 
-  const scheduledMessages =
-    await withTimeout(
-      client.getScheduledMessages(
-        target
-      ),
-      REQUEST_TIMEOUT,
-      'Verifying scheduled Telegram message'
-    );
-
+  const scheduledMessages = await telegramRequest(() => withTimeout(
+    client.getScheduledMessages(target),
+    REQUEST_TIMEOUT,
+    'Verifying scheduled Telegram message'
+  ));
   console.log(
     'Telegram scheduled messages:',
     scheduledMessages.map(
@@ -1751,9 +1851,9 @@ async function cancelScheduledMessage(
     );
 
     const scheduledMessages =
-      await client.getScheduledMessages(
+      await telegramRequest(() => client.getScheduledMessages(
         target
-      );
+      ));
 
     const targetTimestamp =
       Math.floor(
@@ -1800,12 +1900,12 @@ async function cancelScheduledMessage(
     );
   }
 
-  await client.deleteScheduledMessages(
+  await telegramRequest(() => client.deleteScheduledMessages(
     target,
     [
       Number(telegramMessageId)
     ]
-  );
+  ));
 
   console.log(
     'Scheduled message cancelled successfully'

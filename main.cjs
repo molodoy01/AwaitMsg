@@ -3,9 +3,6 @@ const path = require('path');
 require('dotenv').config();
 const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
 
-const DEFAULT_PRODUCTION_API_ID = String(process.env.API_ID || '32410711');
-const DEFAULT_PRODUCTION_API_HASH = String(process.env.API_HASH || '0ff4fb84d6816badda23acdb9dd78705');
-
 const SECURE_CONFIG_PATH = path.join(
   app.getPath('userData'),
   'awaitmsg-secure-config.json'
@@ -128,11 +125,6 @@ function syncSecureEnv() {
 }
 
 function loadProductionSecrets() {
-  if (app.isPackaged) {
-    process.env.API_ID = process.env.API_ID || DEFAULT_PRODUCTION_API_ID;
-    process.env.API_HASH = process.env.API_HASH || DEFAULT_PRODUCTION_API_HASH;
-  }
-
   const config = readSecureConfig();
   const secureConfigExists = fs.existsSync(SECURE_CONFIG_PATH);
   const nextConfig = { ...config };
@@ -173,7 +165,13 @@ function loadProductionSecrets() {
 loadProductionSecrets();
 syncSecureEnv();
 
-const DEV_MODE = process.env.DEV_MODE === 'true' && !app.isPackaged;
+const TEMPORARY_AUTH_BYPASS =
+  process.env.TEMPORARY_AUTH_BYPASS === 'true' &&
+  !app.isPackaged;
+
+process.env.TEMPORARY_AUTH_BYPASS = TEMPORARY_AUTH_BYPASS ? 'true' : 'false';
+
+const DEV_MODE = (process.env.DEV_MODE === 'true' || TEMPORARY_AUTH_BYPASS) && !app.isPackaged;
 process.env.DEV_MODE = DEV_MODE ? 'true' : 'false';
 
 function shouldLoadProductionBuild() {
