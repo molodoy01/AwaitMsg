@@ -31,43 +31,12 @@ import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
 import { SettingsView } from '@/components/SettingsView';
-import { ArrowRightToLine } from 'lucide-react';
+import { ArrowRightToLine, Settings } from 'lucide-react';
 
 type AssistantIntent = NonNullable<
   Awaited<ReturnType<Window['gemini']['generate']>>['intent']
 >;
 type GeminiSettings = Awaited<ReturnType<Window['gemini']['getSettings']>>;
-
-const DEV_MODE_MOCK_CHATS: Chat[] = [
-  { id: 'dev-chat-1', name: 'Team Updates' },
-  { id: 'dev-chat-2', name: 'Family Circle' },
-  { id: 'dev-chat-3', name: 'Design Feedback' },
-];
-
-const DEV_MODE_MOCK_UPCOMING: ScheduledMessage[] = [
-  {
-    id: 'dev-upcoming-1',
-    chatId: 'dev-chat-1',
-    chatName: 'Team Updates',
-    text: 'Morning standup reminder for the product team.',
-    when: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    createdAt: new Date().toISOString(),
-    status: 'scheduled',
-  },
-];
-
-const DEV_MODE_MOCK_SENT: ScheduledMessage[] = [
-  {
-    id: 'dev-sent-1',
-    chatId: 'dev-chat-2',
-    chatName: 'Family Circle',
-    text: 'Dinner reservation reminder for tonight.',
-    when: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    status: 'sent',
-    sentAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-  },
-];
 
 function App() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -98,7 +67,9 @@ function App() {
 
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
+  const [connectionResolved, setConnectionResolved] = useState(false);
   const [authStep, setAuthStep] = useState<'phone' | 'code' | 'password'>('phone');
+  const [showAuthForm, setShowAuthForm] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [phoneCode, setPhoneCode] = useState('');
   const [twoFactorPassword, setTwoFactorPassword] = useState('');
@@ -127,8 +98,6 @@ function App() {
   const [cancelingIds, setCancelingIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const openPickerRef = useRef<'date' | 'time' | null>(null);
-  const isDevMode = Boolean(window.appConfig?.devMode);
-
   const assistantExamples = [
     'Tell me what to send and when — I’ll help you schedule it.',
     'Напиши Саше завтра в 10, чтобы он не забыл документы.',
@@ -309,21 +278,6 @@ function App() {
   }
 
   useEffect(() => {
-    if (isDevMode) {
-      const mockChats = DEV_MODE_MOCK_CHATS;
-      const storedUpcoming = loadUpcoming();
-      const storedSent = loadSent();
-
-      setChats(mockChats);
-      setSelectedChat(mockChats[0] ?? null);
-      setUpcoming(storedUpcoming.length > 0 ? storedUpcoming : DEV_MODE_MOCK_UPCOMING);
-      setSent(storedSent.length > 0 ? storedSent : DEV_MODE_MOCK_SENT);
-      setConnected(true);
-      setConnecting(false);
-      setAuthError('');
-      return;
-    }
-
     const loadedChats = loadChats();
     const hidden = loadHiddenChats();
 
@@ -350,6 +304,7 @@ function App() {
 
         if (!configResult.success || !hasSession) {
           setConnecting(false);
+          setConnectionResolved(true);
           return;
         }
 
@@ -358,6 +313,7 @@ function App() {
 
           setConnecting(false);
           setConnected(result.success);
+          setConnectionResolved(true);
 
           if (!result.success) {
             setAuthError(result.error || 'Saved session could not be connected.');
@@ -369,6 +325,7 @@ function App() {
 
         setConnecting(false);
         setConnected(false);
+        setConnectionResolved(true);
         setAuthError(
           error instanceof Error
             ? error.message
@@ -379,7 +336,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [isDevMode, showNotification]);
+  }, [showNotification]);
 
   useEffect(() => {
     const handleStatus = (status: unknown) => {
@@ -397,11 +354,13 @@ function App() {
         if (value.status === 'connected') {
           setConnected(true);
           setConnecting(false);
+          setConnectionResolved(true);
         }
 
           if (value.status === 'reauth_required') {
             setConnected(false);
             setConnecting(false);
+            setConnectionResolved(true);
             setAuthError(value.error || 'Telegram session expired. Please sign in again.');
           }
 
@@ -412,6 +371,7 @@ function App() {
         ) {
           setConnected(false);
           setConnecting(false);
+          setConnectionResolved(true);
         }
       }
 
@@ -419,6 +379,7 @@ function App() {
         if (status === 'connected') {
           setConnected(true);
           setConnecting(false);
+          setConnectionResolved(true);
         }
 
         if (
@@ -428,6 +389,7 @@ function App() {
         ) {
           setConnected(false);
           setConnecting(false);
+          setConnectionResolved(true);
         }
       }
     };
@@ -436,7 +398,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!connected || isDevMode) return;
+    if (!connected) return;
 
     window.telegram
       .getChats()
@@ -474,10 +436,10 @@ function App() {
       .catch(() => {
         // Keep locally saved chats if Telegram chat loading fails.
       });
-  }, [connected, isDevMode]);
+  }, [connected]);
 
   useEffect(() => {
-    if (!connected || isDevMode) return;
+    if (!connected) return;
 
     let cancelled = false;
 
@@ -529,7 +491,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [connected, isDevMode, showNotification]);
+  }, [connected, showNotification]);
 
   useEffect(() => {
     const moveDueMessages = () => {
@@ -702,49 +664,18 @@ function App() {
     const text = scheduleMessage;
     const operationId = uid();
 
-    if (!isDevMode) {
-      const pendingMessage = createPendingSchedule({
-        operationId,
-        chatId,
-        chatName,
-        text,
-        when: whenISO,
-        createdAt: new Date().toISOString(),
-      });
+    const pendingMessage = createPendingSchedule({
+      operationId,
+      chatId,
+      chatName,
+      text,
+      when: whenISO,
+      createdAt: new Date().toISOString(),
+    });
 
-      const updated = [...upcoming, pendingMessage];
-      setUpcoming(updated);
-      saveUpcoming(updated);
-    }
-
-    if (isDevMode) {
-      const newMessageId = uid();
-      const newMsg: ScheduledMessage = {
-        id: newMessageId,
-        chatId,
-        chatName,
-        text,
-        when: whenISO,
-        createdAt: new Date().toISOString(),
-        status: 'scheduled',
-      };
-
-      const updated = [...upcoming, newMsg];
-
-      setUpcoming(updated);
-      saveUpcoming(updated);
-      setMessage('');
-      setAssistantPrompt('');
-      setAssistantResponse('');
-      setAssistantIntent(null);
-      setScheduling(false);
-      setSuccessPulse(true);
-
-      window.setTimeout(() => {
-        setSuccessPulse(false);
-      }, 1500);
-      return;
-    }
+    const updated = [...upcoming, pendingMessage];
+    setUpcoming(updated);
+    saveUpcoming(updated);
 
     window.telegram
       .schedule({
@@ -820,20 +751,6 @@ function App() {
   }
 
   function handleCancelMessage(msg: ScheduledMessage) {
-    if (isDevMode) {
-      const updated = upcoming.filter((item) => item.id !== msg.id);
-
-      setUpcoming(updated);
-      saveUpcoming(updated);
-
-      showNotification(
-        'Message removed from the preview list.',
-        'info',
-        'Unscheduled'
-      );
-      return;
-    }
-
     if (cancelingIds.has(msg.id)) return;
 
     if (
@@ -905,30 +822,6 @@ function App() {
   }
 
   function handleSendNow(msg: ScheduledMessage) {
-    if (isDevMode) {
-      const sentMsg: ScheduledMessage = {
-        ...msg,
-        status: 'sent',
-        sentAt: new Date().toISOString(),
-      };
-
-      const updatedUpcoming = upcoming.filter(
-        (item) => item.id !== msg.id
-      );
-
-      setUpcoming(updatedUpcoming);
-      saveUpcoming(updatedUpcoming);
-
-      const updatedSent = [sentMsg, ...sent];
-
-      setSent(updatedSent);
-      saveSent(updatedSent);
-
-      setRevealingId(msg.id);
-      window.setTimeout(() => setRevealingId(null), 1500);
-      return;
-    }
-
     if (sendingIds.has(msg.id)) return;
 
     setSendingIds((prev) => {
@@ -1022,18 +915,6 @@ function App() {
   }
 
   function handleClearAll() {
-    if (isDevMode) {
-      setUpcoming([]);
-      saveUpcoming([]);
-
-      showNotification(
-        'All upcoming cleared from the preview list.',
-        'info',
-        'Cleared'
-      );
-      return;
-    }
-
     if (upcoming.length === 0) return;
 
     const cancelable = upcoming.filter(
@@ -1193,7 +1074,7 @@ function App() {
       />
 
       <div className="app">
-        <header className="topbar">
+        <header className={`topbar ${!connected ? 'is-login-topbar' : ''}`}>
           <div className="topbar-identity">
             <div className="brand">
               AWAITMSG
@@ -1201,52 +1082,90 @@ function App() {
           </div>
 
           <div className="topbar-actions">
-            {connected && !isDevMode && (
-              isConfirmingLogout ? (
-                <div className="logout-confirmation">
-                  <span>Log out?</span>
-                  <button
-                    type="button"
-                    className="logout-confirmation-action"
-                    onClick={() => setIsConfirmingLogout(false)}
-                    disabled={authBusy}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="logout-confirmation-action is-confirm"
-                    onClick={handleDisconnect}
-                    disabled={authBusy}
-                  >
-                    Log out
-                  </button>
-                </div>
-              ) : (
+            {connected && (
+              <div className="logout-action-group">
                 <button
                   className="account-action"
-                  onClick={() => setIsConfirmingLogout(true)}
+                  onClick={() => setIsConfirmingLogout((current) => !current)}
                   disabled={authBusy}
                   title="Log out"
                   aria-label="Log out"
+                  aria-expanded={isConfirmingLogout}
                 >
                   <span className="action-icon" aria-hidden="true"><ArrowRightToLine size={16} strokeWidth={1.8} /></span>
                   <span className="action-label">Log out</span>
                 </button>
-              )
+
+                {isConfirmingLogout && (
+                  <div className="logout-confirmation" role="dialog" aria-label="Confirm log out">
+                    <span className="logout-confirmation-prompt">Log out?</span>
+                    <div className="logout-confirmation-actions">
+                      <button
+                        type="button"
+                        className="logout-confirmation-action"
+                        onClick={() => setIsConfirmingLogout(false)}
+                        disabled={authBusy}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="logout-confirmation-action is-confirm"
+                        onClick={handleDisconnect}
+                        disabled={authBusy}
+                      >
+                        Log out
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {connected && (
+              <button
+                type="button"
+                className="settings-action"
+                onClick={() => setIsSettingsOpen(true)}
+                title="Settings"
+                aria-label="Settings"
+              >
+                <span className="action-icon" aria-hidden="true">
+                  <Settings size={16} strokeWidth={1.8} />
+                </span>
+                <span className="action-label">Settings</span>
+              </button>
             )}
           </div>
         </header>
 
-        {!connected && !connecting ? (
-          <section className="auth-panel">
-            <div className="auth-kicker">Your message</div>
-            <h1>Connect your space.</h1>
-            <p className="auth-copy">
-              Bring your account in and keep every message on schedule.
-            </p>
+        {!connectionResolved ? (
+          <div className="connection-stage" aria-hidden="true" />
+        ) : !connected ? (
+          <section className={`auth-panel ${showAuthForm ? 'is-auth-open' : ''}`}>
+            <span className="auth-version">Version 2.1.3</span>
+            <div className="auth-intro">
+              <div className="auth-hero-copy" aria-label="AwaitMsg sign in intro">
+                <span className="auth-hero-line auth-hero-line-main">LET THE MSG</span>
+                <span className="auth-hero-line auth-hero-line-sub">WAIT.</span>
+              </div>
 
-            <div className="auth-form">
+              <button
+                type="button"
+                className="auth-cta"
+                aria-label="Continue with Telegram"
+                onClick={() => {
+                  setShowAuthForm(true);
+                  setAuthStep('phone');
+                  setAuthError('');
+                }}
+              >
+                <span>CONTINUE</span>
+                <span className="auth-cta-arrow" aria-hidden="true">→</span>
+                <span>TELEGRAM</span>
+              </button>
+
+              <div className={`auth-form ${showAuthForm ? 'is-visible' : ''}`}>
               {authStep === 'phone' && (
                 <div className="field">
                   <label>Phone</label>
@@ -1256,7 +1175,6 @@ function App() {
                     onChange={(event) => setPhoneNumber(event.target.value)}
                     placeholder="1 555 000 0000"
                     autoComplete="tel"
-                    autoFocus
                   />
                 </div>
               )}
@@ -1271,7 +1189,6 @@ function App() {
                     placeholder="The code sent to your phone"
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    autoFocus
                   />
                 </div>
               )}
@@ -1319,6 +1236,7 @@ function App() {
                   Start over with another phone
                 </button>
               )}
+              </div>
             </div>
           </section>
         ) : (
@@ -1538,7 +1456,7 @@ function App() {
 
 
         <footer>
-          <span>Version 2.1.0</span>
+          <span>Version 2.1.3</span>
           <span>{getTimezoneLabel()}</span>
         </footer>
           </>

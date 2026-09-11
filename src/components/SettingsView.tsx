@@ -76,7 +76,7 @@ export function SettingsView({
           <section className="settings-view-section">
             <h2>AI Assistant</h2>
             <p className="settings-view-description">
-              Create scheduled messages from natural language.
+              Create scheduled messages in your own words.
             </p>
             <button
               type="button"
@@ -187,7 +187,7 @@ export function SettingsView({
               <br />
               for the right moment.
             </p>
-            <p className="settings-version">Version 2.1.0</p>
+            <p className="settings-version">Version 2.1.3</p>
           </section>
         </div>
       </main>

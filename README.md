@@ -24,8 +24,8 @@ No complicated setup. No extra bots. Just your Telegram account and a message wa
 
 AwaitMsg is made for those small messages that are better sent later.
 
-**Windows · v2.1.0**
+**Windows · v2.1.3**
 
 ## Download
 
-[Download AwaitMsg 2.1.0](../../releases/tag/v2.1.0)
+[Download AwaitMsg 2.1.3](../../releases/tag/v2.1.3)

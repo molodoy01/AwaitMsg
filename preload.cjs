@@ -2,11 +2,6 @@ console.log('>>> PRELOAD LOADED <<<');
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('appConfig', {
-  devMode: process.env.DEV_MODE === 'true',
-  temporaryAuthBypass: process.env.TEMPORARY_AUTH_BYPASS === 'true'
-});
-
 contextBridge.exposeInMainWorld('telegram', {
 
   getConfig: () =>

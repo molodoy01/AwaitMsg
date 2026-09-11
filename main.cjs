@@ -165,15 +165,6 @@ function loadProductionSecrets() {
 loadProductionSecrets();
 syncSecureEnv();
 
-const TEMPORARY_AUTH_BYPASS =
-  process.env.TEMPORARY_AUTH_BYPASS === 'true' &&
-  !app.isPackaged;
-
-process.env.TEMPORARY_AUTH_BYPASS = TEMPORARY_AUTH_BYPASS ? 'true' : 'false';
-
-const DEV_MODE = (process.env.DEV_MODE === 'true' || TEMPORARY_AUTH_BYPASS) && !app.isPackaged;
-process.env.DEV_MODE = DEV_MODE ? 'true' : 'false';
-
 function shouldLoadProductionBuild() {
   return app.isPackaged || process.env.npm_lifecycle_event === 'start';
 }

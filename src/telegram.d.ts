@@ -57,10 +57,6 @@ declare global {
         error?: string;
       }>;
     };
-    appConfig?: {
-      devMode: boolean;
-      temporaryAuthBypass: boolean;
-    };
     telegram: {
       getConfig: () => Promise<{ success: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; error?: string }>;
       saveCredentials: (data: { API_ID?: string | number; API_HASH?: string; SESSION_STRING?: string; apiId?: string | number; apiHash?: string; sessionString?: string }) => Promise<{ success: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; saved?: boolean; error?: string }>;

@@ -15,7 +15,7 @@ export function formatDateTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-  return `${formattedDate} · ${formattedTime}`;
+  return `${formattedDate.replace(/\s*р\.\s*$/, '')} · ${formattedTime}`;
 }
 
 export function getTimezoneParts(): {

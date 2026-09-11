@@ -1,7 +1,8 @@
 {
   "name": "awaitmsg",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.3",
+  "repository": "https://github.com/molodoy01/AwaitMsg",
   "type": "module",
   "scripts": {
     "dev": "vite",

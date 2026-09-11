@@ -19,6 +19,7 @@ interface Props {
 
 export function MessageCard({
   message,
+  isLast,
   onSendNow,
   onDelete,
   showDelete,
@@ -32,14 +33,14 @@ export function MessageCard({
   const createdLabel = new Date(message.createdAt).toLocaleString([], {
     dateStyle: 'short',
     timeStyle: 'short',
-  });
+  }).replace(/\s*р\.\s*$/, '');
 
   return (
     <div
-      className={`message-row ${
-        isRevealing ? 'is-revealing' : ''
-      } ${message.status} ${showCreatedMeta ? 'archive-row' : ''}`}
-    >
+        className={`message-row ${
+          isRevealing ? 'is-revealing' : ''
+        } ${message.status} ${showCreatedMeta ? 'archive-row' : ''} ${isLast ? 'is-last' : ''}`}
+      >
       <div className="message-rail" aria-hidden="true">
         <div
           className="message-rail-dot"
@@ -50,20 +51,12 @@ export function MessageCard({
           }
         />
 
-        <div className="message-rail-line" />
-
       </div>
 
       <div className="message-body">
         <div className="message-header">
           <div className="message-chat">
             {message.chatName}
-          </div>
-        </div>
-
-        <div className="message-meta-row">
-          <div className="message-meta">
-            {formatDateTime(message.when)}
           </div>
 
           <div
@@ -80,6 +73,12 @@ export function MessageCard({
                     : message.status === 'pending'
                       ? 'Pending'
                       : 'Scheduled'}
+          </div>
+        </div>
+
+        <div className="message-meta-row">
+          <div className="message-meta">
+            {formatDateTime(message.when)}
           </div>
 
           {showCreatedMeta && (
