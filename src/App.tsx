@@ -1242,7 +1242,7 @@ function App() {
         ) : (
           <>
         <section className="hero" aria-label="AwaitMsg assistant">
-          <div className="hero-slogan">LET’S WAIT.</div>
+          <div className="hero-slogan">LET IT WAIT.</div>
           <div className="assistant-visual-slot">
           {!geminiSettings.enabled && (
             <div className="hero-subcopy">Message, ready when the moment arrives.</div>
