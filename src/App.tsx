@@ -66,6 +66,8 @@ function App() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'sent'>('upcoming');
 
   const [connected, setConnected] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
+  const [returningUserName, setReturningUserName] = useState('');
   const [connecting, setConnecting] = useState(true);
   const [connectionResolved, setConnectionResolved] = useState(false);
   const [authStep, setAuthStep] = useState<'phone' | 'code' | 'password'>('phone');
@@ -100,7 +102,7 @@ function App() {
   const openPickerRef = useRef<'date' | 'time' | null>(null);
   const assistantExamples = [
     'Tell me what to send and when — I’ll help you schedule it.',
-    'Напиши Саше завтра в 10, чтобы он не забыл документы.',
+    'Message Sasha tomorrow at 10 so he does not forget the documents.',
     'AI Assistant requires a Gemini API key — add yours in Settings.',
   ];
 
@@ -141,6 +143,8 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window.gemini?.getSettings !== 'function') return;
+
     window.gemini.getSettings().then(setGeminiSettings).catch(() => undefined);
   }, []);
 
@@ -296,13 +300,22 @@ function App() {
 
     let mounted = true;
 
-    window.telegram.getConfig()
-      .then((configResult) => {
+    window.telegram.getAuthState()
+      .then((authResult) => {
         if (!mounted) return;
 
-        const hasSession = Boolean(configResult.config?.hasSession);
+        if (!authResult.success || !authResult.authState) {
+          throw new Error(authResult.error || 'Unable to read Telegram auth state.');
+        }
 
-        if (!configResult.success || !hasSession) {
+        const authState = authResult.authState;
+        const hasSession = authState.hasSession;
+
+        setSignedOut(authState.signedOut);
+        setConnected(authState.connected);
+        setReturningUserName(authState.userName || '');
+
+        if (!hasSession || authState.signedOut) {
           setConnecting(false);
           setConnectionResolved(true);
           return;
@@ -339,6 +352,8 @@ function App() {
   }, [showNotification]);
 
   useEffect(() => {
+    if (typeof window.telegram?.onStatus !== 'function') return;
+
     const handleStatus = (status: unknown) => {
       if (typeof status === 'object' && status !== null) {
         const value = status as {
@@ -986,6 +1001,7 @@ function App() {
 
       setConnecting(false);
       setConnected(true);
+      setSignedOut(false);
       setAuthError('');
     } catch (error) {
       setAuthError(
@@ -1003,7 +1019,7 @@ function App() {
     setAuthError('');
 
     try {
-      const result = await window.telegram.clearSession();
+      const result = await window.telegram.signOutKeepSession();
 
       if (!result.success) {
         setAuthError(result.error || 'Unable to disconnect account.');
@@ -1011,6 +1027,8 @@ function App() {
       }
 
       setConnected(false);
+      setSignedOut(true);
+      setReturningUserName(result.authState?.userName || returningUserName);
       setIsConfirmingLogout(false);
       setIsSettingsOpen(false);
       setChats([]);
@@ -1024,6 +1042,74 @@ function App() {
         error instanceof Error
           ? error.message
           : 'Unable to disconnect account.'
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleWelcomeBack() {
+    if (authBusy) return;
+
+    setAuthBusy(true);
+    setConnecting(true);
+    setAuthError('');
+
+    try {
+      const result = await window.telegram.welcomeBack();
+
+      if (!result.success || !result.authState) {
+        setAuthError(result.error || 'Saved Telegram session could not be restored.');
+        return;
+      }
+
+      setSignedOut(result.authState.signedOut);
+      setConnected(result.authState.connected);
+      setReturningUserName(result.authState.userName || returningUserName);
+      setConnectionResolved(true);
+    } catch (error) {
+      setAuthError(
+        error instanceof Error
+          ? error.message
+          : 'Saved Telegram session could not be restored.'
+      );
+    } finally {
+      setConnecting(false);
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleForgetAccount() {
+    if (authBusy) return;
+
+    setAuthBusy(true);
+    setAuthError('');
+
+    try {
+      const result = await window.telegram.forgetAccount();
+
+      if (!result.success || !result.authState) {
+        setAuthError(result.error || 'Telegram account could not be removed.');
+        return;
+      }
+
+      setConnected(false);
+      setSignedOut(false);
+      setReturningUserName('');
+      setIsConfirmingLogout(false);
+      setChats([]);
+      setSelectedChat(null);
+      saveChats([]);
+      setShowAuthForm(false);
+      setAuthStep('phone');
+      setPhoneCode('');
+      setTwoFactorPassword('');
+      setConnectionResolved(true);
+    } catch (error) {
+      setAuthError(
+        error instanceof Error
+          ? error.message
+          : 'Telegram account could not be removed.'
       );
     } finally {
       setAuthBusy(false);
@@ -1086,35 +1172,49 @@ function App() {
               <div className="logout-action-group">
                 <button
                   className="account-action"
-                  onClick={() => setIsConfirmingLogout((current) => !current)}
+                  onClick={() => {
+                    setIsConfirmingLogout((current) => !current);
+                  }}
                   disabled={authBusy}
-                  title="Log out"
-                  aria-label="Log out"
+                  title="Sign out"
+                  aria-label="Sign out"
                   aria-expanded={isConfirmingLogout}
                 >
                   <span className="action-icon" aria-hidden="true"><ArrowRightToLine size={16} strokeWidth={1.8} /></span>
-                  <span className="action-label">Log out</span>
+                  <span className="action-label">Sign out</span>
                 </button>
 
                 {isConfirmingLogout && (
                   <div className="logout-confirmation" role="dialog" aria-label="Confirm log out">
-                    <span className="logout-confirmation-prompt">Log out?</span>
+                    <strong className="logout-confirmation-title">Sign out?</strong>
+                    <div className="logout-choice-list" role="radiogroup" aria-label="Sign out preference">
+                      <button
+                        type="button"
+                        className="logout-choice"
+                        onClick={handleDisconnect}
+                        disabled={authBusy}
+                      >
+                        Remember me
+                      </button>
+                      <button
+                        type="button"
+                        className="logout-choice"
+                        onClick={handleForgetAccount}
+                        disabled={authBusy}
+                      >
+                        Forget me
+                      </button>
+                    </div>
                     <div className="logout-confirmation-actions">
                       <button
                         type="button"
                         className="logout-confirmation-action"
-                        onClick={() => setIsConfirmingLogout(false)}
+                        onClick={() => {
+                          setIsConfirmingLogout(false);
+                        }}
                         disabled={authBusy}
                       >
                         Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className="logout-confirmation-action is-confirm"
-                        onClick={handleDisconnect}
-                        disabled={authBusy}
-                      >
-                        Log out
                       </button>
                     </div>
                   </div>
@@ -1238,6 +1338,31 @@ function App() {
               )}
               </div>
             </div>
+            {signedOut && (
+              <aside className="returning-user-panel" aria-label="Returning user">
+                <div className="returning-user-copy">
+                  <button
+                    type="button"
+                    className="returning-user-sign-in"
+                    onClick={handleWelcomeBack}
+                    disabled={authBusy}
+                  >
+                    Sign in
+                  </button>
+                  <strong>Hello again, {returningUserName || 'Telegram account'}</strong>
+                  <div className="returning-user-actions">
+                    <button
+                      type="button"
+                      onClick={handleForgetAccount}
+                      disabled={authBusy}
+                    >
+                      Not you?
+                    </button>
+                  </div>
+                </div>
+                <span className="returning-user-line" aria-hidden="true" />
+              </aside>
+            )}
           </section>
         ) : (
           <>
@@ -1269,13 +1394,13 @@ function App() {
               }}
               placeholder={assistantExamples[assistantExampleIndex]}
               aria-label="Ask AwaitMsg Assistant"
-              title="Напишите задачу — AI поможет сформулировать сообщение и запланировать его."
+              title="Describe the task — AI will help you write the message and schedule it."
               rows={2}
             />
             <button
               type="submit"
               aria-label="Send to AI Assistant"
-              title="Отправить запрос к AI Assistant"
+              title="Send request to AI Assistant"
             >
               →
             </button>
@@ -1310,7 +1435,7 @@ function App() {
                     setAssistantResponse('');
                   }}
                 >
-                  Редактировать
+                  Edit
                 </button>
                 <button
                   type="button"
@@ -1330,7 +1455,7 @@ function App() {
                     });
                   }}
                 >
-                  Отправить →
+                  Send →
                 </button>
               </div>
                 </div>

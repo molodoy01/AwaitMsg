@@ -5,6 +5,18 @@ contextBridge.exposeInMainWorld('telegram', {
   getConfig: () =>
     ipcRenderer.invoke('telegram-config'),
 
+  getAuthState: () =>
+    ipcRenderer.invoke('telegram-auth-state'),
+
+  signOutKeepSession: () =>
+    ipcRenderer.invoke('telegram-sign-out-keep-session'),
+
+  welcomeBack: () =>
+    ipcRenderer.invoke('telegram-welcome-back'),
+
+  forgetAccount: () =>
+    ipcRenderer.invoke('telegram-forget-account'),
+
   clearSession: () =>
     ipcRenderer.invoke('telegram-clear-session'),
 

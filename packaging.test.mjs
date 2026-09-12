@@ -27,4 +27,26 @@ describe('production packaging', () => {
       expect(fs.existsSync(path.join(projectRoot, file))).toBe(true);
     }
   });
+
+  it('does not include the project root .env in production files', () => {
+    const rootEnvPath = path.join(projectRoot, '.env');
+    const productionFiles = packageJson.build.files;
+    const includesRootEnv = productionFiles.some((pattern) =>
+      pattern === '.env' || pattern === './.env' || pattern.endsWith('/.env')
+    );
+
+    expect(fs.existsSync(rootEnvPath)).toBe(true);
+    expect(includesRootEnv).toBe(false);
+  });
+
+  it('keeps .env excluded from the generated effective config', () => {
+    const effectiveConfigPath = path.join(
+      projectRoot,
+      'release',
+      'builder-effective-config.yaml'
+    );
+    const effectiveConfig = fs.readFileSync(effectiveConfigPath, 'utf8');
+
+    expect(effectiveConfig).not.toMatch(/^\s*-\s+\.?\/?\.env\s*$/m);
+  });
 });

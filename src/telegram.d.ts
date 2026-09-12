@@ -1,6 +1,20 @@
 export {};
 
 declare global {
+  interface TelegramAuthState {
+    hasSession: boolean;
+    signedOut: boolean;
+    connected: boolean;
+    userName: string;
+    state: string;
+  }
+
+  interface TelegramAuthStateResult {
+    success: boolean;
+    authState?: TelegramAuthState;
+    error?: string;
+  }
+
   interface Window {
     gemini: {
       generate: (prompt: string, context: {
@@ -59,6 +73,10 @@ declare global {
     };
     telegram: {
       getConfig: () => Promise<{ success: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; error?: string }>;
+      getAuthState: () => Promise<TelegramAuthStateResult>;
+      signOutKeepSession: () => Promise<TelegramAuthStateResult>;
+      welcomeBack: () => Promise<TelegramAuthStateResult>;
+      forgetAccount: () => Promise<TelegramAuthStateResult>;
       clearSession: () => Promise<{ success: boolean; cleared?: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; error?: string }>;
       login: (data: { API_ID?: string | number; API_HASH?: string; phoneNumber?: string; phone?: string; password?: string; phoneCode?: string; apiId?: string | number; apiHash?: string }) => Promise<{ success: boolean; requiresCode?: boolean; requiresPassword?: boolean; nextStep?: string; error?: string; isCodeViaApp?: boolean }>;
       connect: () => Promise<{ success: boolean; error?: string }>;

@@ -81,7 +81,8 @@ describe('telegram account storage adapter', () => {
     expect(adapter.loadAccountSecrets()).toEqual({
       API_ID: '123',
       API_HASH: 'hash',
-      SESSION_STRING: 'session'
+      SESSION_STRING: 'session',
+      signedOut: false
     });
     expect(JSON.parse(files.get(getConfigPath()))).toEqual({
       API_ID_ENCRYPTED: 'ZW5jcnlwdGVkOjEyMw==',
@@ -92,8 +93,114 @@ describe('telegram account storage adapter', () => {
     expect(adapter.loadAccountSecrets()).toEqual({
       API_ID: '123',
       API_HASH: 'hash',
-      SESSION_STRING: ''
+      SESSION_STRING: '',
+      signedOut: false
     });
+  });
+
+  it('migrates legacy Telegram plaintext fields without losing metadata', () => {
+    const { adapter, files } = createFakeStorage({
+      API_ID: '123',
+      API_HASH: 'hash',
+      SESSION_STRING: 'session',
+      SIGNED_OUT: true,
+      GEMINI_API_KEY_ENCRYPTED: 'gemini-ciphertext',
+      AI_ASSISTANT_ENABLED: false
+    });
+
+    expect(adapter.loadAccountSecrets()).toMatchObject({
+      API_ID: '123',
+      API_HASH: 'hash',
+      SESSION_STRING: 'session',
+      signedOut: true
+    });
+
+    const migratedConfig = JSON.parse(files.get(getConfigPath()));
+
+    expect(migratedConfig).toMatchObject({
+      API_ID_ENCRYPTED: 'ZW5jcnlwdGVkOjEyMw==',
+      API_HASH_ENCRYPTED: 'ZW5jcnlwdGVkOmhhc2g=',
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24=',
+      SIGNED_OUT: true,
+      GEMINI_API_KEY_ENCRYPTED: 'gemini-ciphertext',
+      AI_ASSISTANT_ENABLED: false
+    });
+    expect(migratedConfig).not.toHaveProperty('API_ID');
+    expect(migratedConfig).not.toHaveProperty('API_HASH');
+    expect(migratedConfig).not.toHaveProperty('SESSION_STRING');
+  });
+
+  it('defaults missing signed-out metadata to false', () => {
+    const { adapter } = createFakeStorage({
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24='
+    });
+
+    expect(adapter.getTelegramAuthState()).toEqual({
+      hasSession: true,
+      signedOut: false,
+      userName: ''
+    });
+  });
+
+  it('persists signed-out metadata without changing other config fields', () => {
+    const { adapter, files } = createFakeStorage({
+      API_ID_ENCRYPTED: 'ZW5jcnlwdGVkOjEyMw==',
+      API_HASH_ENCRYPTED: 'ZW5jcnlwdGVkOmhhc2g=',
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24=',
+      GEMINI_API_KEY_ENCRYPTED: 'gemini-ciphertext',
+      AI_ASSISTANT_ENABLED: true
+    });
+
+    expect(adapter.setTelegramSignedOut(true)).toBe(true);
+    expect(adapter.getTelegramAuthState()).toEqual({
+      hasSession: true,
+      signedOut: true,
+      userName: ''
+    });
+    expect(JSON.parse(files.get(getConfigPath()))).toEqual({
+      API_ID_ENCRYPTED: 'ZW5jcnlwdGVkOjEyMw==',
+      API_HASH_ENCRYPTED: 'ZW5jcnlwdGVkOmhhc2g=',
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24=',
+      GEMINI_API_KEY_ENCRYPTED: 'gemini-ciphertext',
+      AI_ASSISTANT_ENABLED: true,
+      SIGNED_OUT: true
+    });
+
+    expect(adapter.setTelegramSignedOut(false)).toBe(true);
+    expect(adapter.loadAccountSecrets().signedOut).toBe(false);
+  });
+
+  it('retains the session when setting signed-out metadata', () => {
+    const { adapter, files } = createFakeStorage({
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24='
+    });
+
+    adapter.setTelegramSignedOut(true);
+
+    expect(JSON.parse(files.get(getConfigPath()))).toMatchObject({
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24=',
+      SIGNED_OUT: true
+    });
+  });
+
+  it('persists the Telegram user name with the auth state', () => {
+    const { adapter, files } = createFakeStorage({
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24='
+    });
+
+    expect(adapter.saveAccountSecrets({ userName: 'Alex Johnson' })).toBe(true);
+    expect(adapter.getTelegramAuthState()).toEqual({
+      hasSession: true,
+      signedOut: false,
+      userName: 'Alex Johnson'
+    });
+    expect(JSON.parse(files.get(getConfigPath()))).toMatchObject({
+      TELEGRAM_USER_NAME: 'Alex Johnson',
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24='
+    });
+
+    expect(adapter.setTelegramSignedOut(true)).toBe(true);
+    expect(adapter.getTelegramAuthState().userName).toBe('Alex Johnson');
   });
 
   it('does not overwrite a corrupted config during save', () => {
@@ -186,7 +293,8 @@ describe('telegram account storage adapter', () => {
     expect(adapter.loadAccountSecrets()).toEqual({
       API_ID: '',
       API_HASH: '',
-      SESSION_STRING: ''
+      SESSION_STRING: '',
+      signedOut: false
     });
   });
 
@@ -200,7 +308,8 @@ describe('telegram account storage adapter', () => {
     expect(adapter.loadAccountSecrets()).toEqual({
       API_ID: '',
       API_HASH: '',
-      SESSION_STRING: ''
+      SESSION_STRING: '',
+      signedOut: false
     });
   });
 

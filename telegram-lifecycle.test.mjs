@@ -1045,4 +1045,178 @@ describe('single-account Telegram lifecycle', () => {
     expect(() => trackOperation(state, 'send', () => undefined)).toThrow('shutting down');
   });
 
+  it('supports retained sign out, concurrent welcome back, and account removal', async () => {
+    vi.resetModules();
+    const originalLoad = nodeModule._load;
+    const storageState = {
+      API_ID: '1',
+      API_HASH: 'hash',
+      SESSION_STRING: 'session',
+      signedOut: true
+    };
+    nodeModule._load = function load(request, parent, isMain) {
+      if (request === 'teleproto') {
+        return {
+          TelegramClient: class FakeTelegramClient {
+            constructor() {
+              this.connected = false;
+              this.logOutCalls = 0;
+              this.disconnectCalls = 0;
+              globalThis.__telegramWelcomeClient = this;
+            }
+
+            connect() {
+              this.connected = true;
+              return Promise.resolve();
+            }
+
+            disconnect() {
+              this.disconnectCalls += 1;
+              this.connected = false;
+              return Promise.resolve();
+            }
+
+            logOut() {
+              this.logOutCalls += 1;
+              this.connected = false;
+              return Promise.resolve();
+            }
+          },
+          Api: {}
+        };
+      }
+
+      if (request === 'teleproto/sessions') {
+        return { StringSession: class FakeStringSession {} };
+      }
+
+      if (request === './telegram-account-storage.cjs') {
+        return {
+          loadAccountSecrets: () => ({ ...storageState }),
+          saveAccountSecrets: () => true,
+          getTelegramAuthState: () => ({
+            hasSession: Boolean(storageState.SESSION_STRING),
+            signedOut: storageState.signedOut
+          }),
+          setTelegramSignedOut: (value) => {
+            storageState.signedOut = Boolean(value);
+            return true;
+          },
+          clearAccountSecrets: () => {
+            storageState.SESSION_STRING = '';
+            storageState.signedOut = false;
+            return true;
+          }
+        };
+      }
+
+      return originalLoad(request, parent, isMain);
+    };
+
+    try {
+      const { createTelegramCore } = await import('./telegram.cjs');
+      const core = createTelegramCore();
+
+      const welcomed = core.welcomeBack();
+      const welcomedAgain = core.welcomeBack();
+      expect(welcomedAgain).toBe(welcomed);
+      await welcomed;
+      expect(storageState.signedOut).toBe(false);
+      expect(globalThis.__telegramWelcomeClient.logOutCalls).toBe(0);
+
+      await core.signOutKeepSession();
+      expect(globalThis.__telegramWelcomeClient.logOutCalls).toBe(0);
+      expect(globalThis.__telegramWelcomeClient.disconnectCalls).toBe(1);
+      expect(storageState.SESSION_STRING).toBe('session');
+      expect(storageState.signedOut).toBe(true);
+
+      await core.forgetTelegramAccount();
+      expect(globalThis.__telegramWelcomeClient.logOutCalls).toBe(1);
+      expect(storageState.SESSION_STRING).toBe('');
+      expect(storageState.signedOut).toBe(false);
+    } finally {
+      nodeModule._load = originalLoad;
+      delete globalThis.__telegramWelcomeClient;
+      vi.resetModules();
+    }
+  });
+
+  it('does not resurrect a client when retained sign out interrupts connect', async () => {
+    vi.resetModules();
+    const connectGate = createDeferred();
+    const originalLoad = nodeModule._load;
+    const storageState = {
+      API_ID: '1',
+      API_HASH: 'hash',
+      SESSION_STRING: 'session',
+      signedOut: false
+    };
+    nodeModule._load = function load(request, parent, isMain) {
+      if (request === 'teleproto') {
+        return {
+          TelegramClient: class FakeTelegramClient {
+            constructor() {
+              this.connected = false;
+              globalThis.__telegramConnectClient = this;
+            }
+
+            connect() {
+              return connectGate.promise.then(() => {
+                this.connected = true;
+              });
+            }
+
+            disconnect() {
+              this.connected = false;
+              return Promise.resolve();
+            }
+          },
+          Api: {}
+        };
+      }
+
+      if (request === 'teleproto/sessions') {
+        return { StringSession: class FakeStringSession {} };
+      }
+
+      if (request === './telegram-account-storage.cjs') {
+        return {
+          loadAccountSecrets: () => ({ ...storageState }),
+          saveAccountSecrets: () => true,
+          setTelegramSignedOut: (value) => {
+            storageState.signedOut = Boolean(value);
+            return true;
+          },
+          clearAccountSecrets: () => true
+        };
+      }
+
+      return originalLoad(request, parent, isMain);
+    };
+
+    try {
+      const { createTelegramCore } = await import('./telegram.cjs');
+      const core = createTelegramCore();
+      const connecting = core.connectTelegram();
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(globalThis.__telegramConnectClient).toBeDefined();
+
+      const signingOut = core.signOutKeepSession();
+      connectGate.resolve();
+
+      await signingOut;
+      await expect(connecting).rejects.toThrow('cancelled');
+      expect(storageState.signedOut).toBe(true);
+      expect(core.lifecycleState.status).toBe('disconnected');
+      expect(core.lifecycleState.reconnectTimer).toBeNull();
+    } finally {
+      connectGate.resolve();
+      nodeModule._load = originalLoad;
+      delete globalThis.__telegramConnectClient;
+      vi.resetModules();
+    }
+  });
+
 });

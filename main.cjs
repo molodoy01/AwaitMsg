@@ -5,6 +5,10 @@ const { app, BrowserWindow, ipcMain, safeStorage, shell } = require('electron');
 
 if (!app.isPackaged && process.env.npm_lifecycle_event !== 'start') {
   require('dotenv').config();
+
+  for (const key of ['API_ID', 'API_HASH', 'SESSION_STRING']) {
+    delete process.env[key];
+  }
 }
 
 const {
@@ -123,66 +127,6 @@ function setGeminiEnabled(enabled) {
   return getGeminiSettings();
 }
 
-function syncSecureEnv() {
-  const config = readSecureConfig();
-  const secureConfigExists = fs.existsSync(SECURE_CONFIG_PATH);
-
-  if (config.API_ID) {
-    process.env.API_ID = String(config.API_ID);
-  }
-
-  if (config.API_HASH) {
-    process.env.API_HASH = config.API_HASH;
-  }
-
-  if (config.SESSION_STRING) {
-    process.env.SESSION_STRING = config.SESSION_STRING;
-  } else if (secureConfigExists) {
-    process.env.SESSION_STRING = '';
-  }
-}
-
-function loadProductionSecrets() {
-  const config = readSecureConfig();
-  const secureConfigExists = fs.existsSync(SECURE_CONFIG_PATH);
-  const nextConfig = { ...config };
-
-  if (!nextConfig.API_ID && process.env.API_ID) {
-    nextConfig.API_ID = process.env.API_ID;
-  }
-
-  if (!nextConfig.API_HASH && process.env.API_HASH) {
-    nextConfig.API_HASH = process.env.API_HASH;
-  }
-
-  if (!secureConfigExists && !nextConfig.SESSION_STRING && process.env.SESSION_STRING) {
-    nextConfig.SESSION_STRING = process.env.SESSION_STRING;
-  }
-
-  if (
-    (!config.API_ID && nextConfig.API_ID) ||
-    (!config.API_HASH && nextConfig.API_HASH) ||
-    (!config.SESSION_STRING && nextConfig.SESSION_STRING)
-  ) {
-    writeSecureConfig(nextConfig);
-  }
-
-  if (nextConfig.API_ID) {
-    process.env.API_ID = String(nextConfig.API_ID);
-  }
-
-  if (nextConfig.API_HASH) {
-    process.env.API_HASH = nextConfig.API_HASH;
-  }
-
-  if (nextConfig.SESSION_STRING) {
-    process.env.SESSION_STRING = nextConfig.SESSION_STRING;
-  }
-}
-
-loadProductionSecrets();
-syncSecureEnv();
-
 function shouldLoadProductionBuild() {
   return app.isPackaged || process.env.npm_lifecycle_event === 'start';
 }
@@ -215,6 +159,9 @@ const {
   connectTelegram,
   loginUser,
   getTelegramConfig,
+  signOutKeepSession,
+  welcomeBack,
+  forgetTelegramAccount,
   clearTelegramSession,
   getChats,
   getContacts,
@@ -230,6 +177,27 @@ const { generateGeminiContent } = require('./gemini.cjs');
 setTelegramStatusCallback((status) => {
   sendTelegramStatus(status);
 });
+
+function getSafeTelegramAuthState() {
+  const config = getTelegramConfig();
+  const hasSession = Boolean(config.hasSession);
+  const signedOut = Boolean(config.signedOut);
+  const connected = Boolean(config.connected);
+
+  return {
+    hasSession,
+    signedOut,
+    connected,
+    userName: config.userName || '',
+    state: !hasSession
+      ? 'NO_SESSION'
+      : signedOut
+        ? 'SIGNED_OUT'
+        : connected
+          ? 'CONNECTED'
+          : 'DISCONNECTED'
+  };
+}
 
 function getGeminiErrorCode(error) {
   const status = error && typeof error === 'object' ? error.status : undefined;
@@ -409,6 +377,65 @@ ipcMain.handle('telegram-config', async (event) => {
     };
   } catch (error) {
     console.error('Telegram config read error:', error?.code || error?.name || 'unknown');
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-auth-state', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  try {
+    return { success: true, authState: getSafeTelegramAuthState() };
+  } catch (error) {
+    console.error('Telegram auth state error:', error?.code || error?.name || 'unknown');
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-sign-out-keep-session', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  try {
+    await signOutKeepSession();
+    return { success: true, authState: getSafeTelegramAuthState() };
+  } catch (error) {
+    console.error('Telegram sign out error:', error?.code || error?.name || 'unknown');
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-welcome-back', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  try {
+    await welcomeBack();
+    return { success: true, authState: getSafeTelegramAuthState() };
+  } catch (error) {
+    console.error('Telegram Welcome Back error:', error?.code || error?.name || 'unknown');
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-forget-account', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  try {
+    await forgetTelegramAccount();
+    return { success: true, authState: getSafeTelegramAuthState() };
+  } catch (error) {
+    console.error('Telegram account removal error:', error?.code || error?.name || 'unknown');
     return { success: false, error: error.message };
   }
 });

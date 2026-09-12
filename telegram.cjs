@@ -3,6 +3,8 @@ const { StringSession } = require('teleproto/sessions');
 const {
   loadAccountSecrets,
   saveAccountSecrets,
+  getTelegramAuthState: getStoredTelegramAuthState,
+  setTelegramSignedOut,
   clearAccountSecrets
 } = require('./telegram-account-storage.cjs');
 const {
@@ -22,39 +24,29 @@ function normalizeSessionString(value) {
     : '';
 }
 
+function getTelegramUserName(user) {
+  return [user?.firstName, user?.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
 function updateRuntimeSecretsFromConfig(nextSecrets = loadAccountSecrets()) {
   const apiId = nextSecrets.API_ID;
   const apiHash = nextSecrets.API_HASH;
   const sessionString = normalizeSessionString(nextSecrets.SESSION_STRING);
 
-  if (apiId) {
-    process.env.API_ID = String(apiId);
-  }
-
-  if (apiHash) {
-    process.env.API_HASH = apiHash;
-  }
-
-  if (sessionString) {
-    process.env.SESSION_STRING = sessionString;
-  }
-
   return {
     apiId: apiId ? Number(apiId) : undefined,
     apiHash,
-    sessionString
+    sessionString,
+    signedOut: nextSecrets.signedOut === true
   };
 }
 
 function getSecretValue(key) {
   const secrets = loadAccountSecrets();
-  const configValue = secrets[key];
-
-  if (configValue) {
-    return configValue;
-  }
-
-  return process.env[key] || undefined;
+  return secrets[key] || undefined;
 }
 
 function createTelegramCore(options = {}) {
@@ -64,30 +56,36 @@ function createTelegramCore(options = {}) {
   let runtimeSessionString = normalizeSessionString(
     options.sessionString ?? getSecretValue('SESSION_STRING')
   );
+  let runtimeSignedOut = false;
 
 function refreshRuntimeSecrets() {
   const next = updateRuntimeSecretsFromConfig(loadAccountSecrets());
   runtimeApiId = Number(next.apiId || 0);
   runtimeApiHash = next.apiHash || '';
   runtimeSessionString = next.sessionString || '';
+  runtimeSignedOut = next.signedOut === true;
   return {
     apiId: runtimeApiId,
     apiHash: runtimeApiHash,
-    sessionString: runtimeSessionString
+    sessionString: runtimeSessionString,
+    signedOut: runtimeSignedOut
   };
 }
 
 function getTelegramConfig() {
   const secrets = loadAccountSecrets();
-  const apiId = secrets.API_ID || process.env.API_ID;
-  const apiHash = secrets.API_HASH || process.env.API_HASH;
-  const sessionString = normalizeSessionString(
-    secrets.SESSION_STRING || process.env.SESSION_STRING
-  );
+  const storedAuthState = typeof getStoredTelegramAuthState === 'function'
+    ? getStoredTelegramAuthState()
+    : { signedOut: secrets.signedOut, userName: '' };
+  const apiId = secrets.API_ID;
+  const apiHash = secrets.API_HASH;
+  const sessionString = normalizeSessionString(secrets.SESSION_STRING);
 
   return {
     hasCredentials: Boolean(apiId && apiHash),
     hasSession: Boolean(sessionString),
+    signedOut: storedAuthState.signedOut === true,
+    userName: storedAuthState.userName || '',
     connected: Boolean(client && client.connected)
   };
 }
@@ -96,6 +94,7 @@ async function saveTelegramCredentials(data = {}) {
   const rawApiId = data.API_ID ?? data.apiId;
   const rawApiHash = data.API_HASH ?? data.apiHash;
   const rawSession = data.SESSION_STRING ?? data.sessionString;
+  const rawUserName = data.userName;
 
   const secrets = {};
 
@@ -111,6 +110,12 @@ async function saveTelegramCredentials(data = {}) {
     secrets.SESSION_STRING = normalizeSessionString(rawSession);
   }
 
+  if (rawUserName !== undefined) {
+    secrets.userName = String(rawUserName || '').trim();
+  }
+
+  secrets.signedOut = false;
+
   const saved = saveAccountSecrets(secrets);
 
   if (saved) {
@@ -123,7 +128,7 @@ async function saveTelegramCredentials(data = {}) {
   };
 }
 
-async function clearTelegramSessionInternal() {
+async function signOutKeepSessionInternal() {
   const clientToClear = client;
 
   stopTelegramReconnect();
@@ -132,11 +137,47 @@ async function clearTelegramSessionInternal() {
   lifecycleState.status = 'disconnected';
   await clearPendingLogin();
 
-  const configSaved = clearAccountSecrets();
-
-  if (!configSaved) {
-    throw new Error('Telegram session could not be cleared from secure storage.');
+  if (clientToClear) {
+    try {
+      await clientToClear.disconnect();
+    } catch (error) {
+      console.error('Telegram disconnect during sign out failed:', error?.code || error?.name || 'unknown');
+      throw error;
+    }
   }
+
+  if (!setTelegramSignedOut(true)) {
+    throw new Error('Telegram signed-out state could not be saved securely.');
+  }
+
+  runtimeSignedOut = true;
+  return { signedOut: true, config: getTelegramConfig() };
+}
+
+function signOutKeepSession() {
+  return trackTelegramOperation('sign-out', signOutKeepSessionInternal);
+}
+
+async function forgetTelegramAccountInternal() {
+  stopTelegramReconnect();
+  lifecycleState.loginGeneration += 1;
+  await clearPendingLogin();
+
+  let logoutError = null;
+  let clientToClear = client;
+
+  if (!clientToClear && runtimeSessionString) {
+    try {
+      clientToClear = await connectTelegramInternal({ allowSignedOut: true });
+    } catch (error) {
+      logoutError = error;
+      clientToClear = client;
+    }
+  }
+
+  client = null;
+  lifecycleState.status = 'disconnected';
+  stopTelegramReconnect();
 
   if (clientToClear) {
     try {
@@ -146,6 +187,7 @@ async function clearTelegramSessionInternal() {
         await clientToClear.disconnect();
       }
     } catch (error) {
+      logoutError = error;
       console.error('Telegram server logout failed; continuing local cleanup:', error?.code || error?.name || 'unknown');
       try {
         await clientToClear.disconnect();
@@ -155,14 +197,28 @@ async function clearTelegramSessionInternal() {
     }
   }
 
+  const configSaved = clearAccountSecrets();
+
+  if (!configSaved) {
+    throw new Error('Telegram session could not be cleared from secure storage.');
+  }
+
   runtimeSessionString = '';
-  process.env.SESSION_STRING = '';
+  runtimeSignedOut = false;
+
+  if (logoutError) {
+    throw logoutError;
+  }
 
   return { cleared: true, config: getTelegramConfig() };
 }
 
+function forgetTelegramAccount() {
+  return trackTelegramOperation('forget-account', forgetTelegramAccountInternal);
+}
+
 function clearTelegramSession() {
-  return trackTelegramOperation('clear-session', clearTelegramSessionInternal);
+  return forgetTelegramAccount();
 }
 
 async function loginUserInternal(params = {}) {
@@ -341,7 +397,9 @@ async function loginUserInternal(params = {}) {
     const credentialsResult = await saveTelegramCredentials({
       API_ID: loginApiId,
       API_HASH: String(apiHashValue),
-      SESSION_STRING: session
+      SESSION_STRING: session,
+      userName: getTelegramUserName(user),
+      signedOut: false
     });
 
     assertTelegramRunning();
@@ -356,7 +414,7 @@ async function loginUserInternal(params = {}) {
     const savedSession = normalizeSessionString(session);
 
     runtimeSessionString = savedSession;
-    process.env.SESSION_STRING = savedSession;
+    runtimeSignedOut = false;
     client = loginClient;
     await clearPendingLogin({ cleanup: false });
     startTelegramReconnect();
@@ -470,7 +528,6 @@ async function invalidateTelegramSession() {
     lifecycleState.loginGeneration += 1;
     await clearPendingLogin();
     runtimeSessionString = '';
-    process.env.SESSION_STRING = '';
 
     if (clientToClear) {
       try {
@@ -751,7 +808,7 @@ function stopTelegramReconnect() {
 // CONNECT
 // =========================================================
 
-async function connectTelegramInternal() {
+async function connectTelegramInternal({ allowSignedOut = false } = {}) {
 
   assertTelegramRunning();
   lifecycleState.status = 'connecting';
@@ -763,6 +820,13 @@ async function connectTelegramInternal() {
     throw new Error(
       'Telegram credentials are missing in the secure Electron userData config'
     );
+  }
+
+  if (runtimeSignedOut && !allowSignedOut) {
+    const error = new Error('Telegram account is signed out. Welcome back to reconnect.');
+    error.code = 'TELEGRAM_SIGNED_OUT';
+    lifecycleState.status = 'disconnected';
+    throw error;
   }
 
   // =======================================================
@@ -894,6 +958,34 @@ function connectTelegram() {
   assertTelegramRunning();
   return runShared(lifecycleState, 'connectPromise', () =>
     trackTelegramOperation('connect', connectTelegramInternal)
+  );
+}
+
+async function welcomeBackInternal() {
+  const connectedClient = await connectTelegramInternal({ allowSignedOut: true });
+
+  if (!setTelegramSignedOut(false)) {
+    stopTelegramReconnect();
+    client = null;
+    lifecycleState.status = 'disconnected';
+
+    try {
+      await connectedClient.disconnect();
+    } catch (error) {
+      console.error('Telegram disconnect after signed-out state failure:', error?.code || error?.name || 'unknown');
+    }
+
+    throw new Error('Telegram signed-out state could not be cleared securely.');
+  }
+
+  runtimeSignedOut = false;
+  return connectedClient;
+}
+
+function welcomeBack() {
+  assertTelegramRunning();
+  return runShared(lifecycleState, 'connectPromise', () =>
+    trackTelegramOperation('welcome-back', welcomeBackInternal)
   );
 }
 
@@ -1692,6 +1784,9 @@ function cancelScheduledMessage(chatId, messageId, message, date, time) {
   return {
     getTelegramConfig,
     saveTelegramCredentials,
+    signOutKeepSession,
+    welcomeBack,
+    forgetTelegramAccount,
     clearTelegramSession,
     loginUser,
     connectTelegram,
@@ -1713,6 +1808,9 @@ module.exports = {
   createTelegramCore,
   getTelegramConfig: (...args) => defaultCore.getTelegramConfig(...args),
   saveTelegramCredentials: (...args) => defaultCore.saveTelegramCredentials(...args),
+  signOutKeepSession: (...args) => defaultCore.signOutKeepSession(...args),
+  welcomeBack: (...args) => defaultCore.welcomeBack(...args),
+  forgetTelegramAccount: (...args) => defaultCore.forgetTelegramAccount(...args),
   clearTelegramSession: (...args) => defaultCore.clearTelegramSession(...args),
   loginUser: (...args) => defaultCore.loginUser(...args),
   connectTelegram: (...args) => defaultCore.connectTelegram(...args),

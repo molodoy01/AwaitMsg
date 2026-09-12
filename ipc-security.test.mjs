@@ -82,5 +82,75 @@ describe('IPC security validation', () => {
     expect(mainSource).not.toContain('session: result.session');
     expect(mainSource).not.toContain('user: result.user');
     expect(mainSource).not.toContain('phoneCodeHash: result.phoneCodeHash');
+
+    const telegramSource = fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), 'telegram.cjs'),
+      'utf8'
+    );
+    expect(mainSource).not.toContain('process.env.SESSION_STRING');
+    expect(mainSource).not.toContain('loadProductionSecrets');
+    expect(mainSource).not.toContain('syncSecureEnv');
+    expect(telegramSource).not.toContain('process.env.SESSION_STRING');
+  });
+
+  it('keeps auth IPC responses credential-free', () => {
+    const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+    const mainSource = fs.readFileSync(path.join(projectRoot, 'main.cjs'), 'utf8');
+    const preloadSource = fs.readFileSync(path.join(projectRoot, 'preload.cjs'), 'utf8');
+    const authStateFunction = mainSource.match(
+      /function getSafeTelegramAuthState\(\) \{[\s\S]*?\n\}/
+    )?.[0];
+
+    expect(authStateFunction).toBeDefined();
+    expect(authStateFunction).toContain('hasSession');
+    expect(authStateFunction).toContain('signedOut');
+    expect(authStateFunction).toContain('connected');
+    expect(authStateFunction).toContain('state');
+    expect(authStateFunction).not.toMatch(/SESSION_STRING|API_ID|API_HASH|ENCRYPTED/);
+
+    for (const channel of [
+      'telegram-auth-state',
+      'telegram-sign-out-keep-session',
+      'telegram-welcome-back',
+      'telegram-forget-account'
+    ]) {
+      expect(mainSource).toContain(
+        `ipcMain.handle('${channel}', async (event) => {`
+      );
+    }
+
+    expect(mainSource).not.toMatch(
+      /ipcMain\.handle\('(telegram-auth-state|telegram-sign-out-keep-session|telegram-welcome-back|telegram-forget-account)', async \(event,/
+    );
+
+    expect(preloadSource).toMatch(
+      /getAuthState:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('telegram-auth-state'\)/
+    );
+    expect(preloadSource).toMatch(
+      /signOutKeepSession:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('telegram-sign-out-keep-session'\)/
+    );
+    expect(preloadSource).toMatch(
+      /welcomeBack:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('telegram-welcome-back'\)/
+    );
+    expect(preloadSource).toMatch(
+      /forgetAccount:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('telegram-forget-account'\)/
+    );
+  });
+
+  it('does not expose credential parameters in new preload auth methods', () => {
+    const preloadSource = fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs'),
+      'utf8'
+    );
+
+    for (const method of ['getAuthState', 'signOutKeepSession', 'welcomeBack', 'forgetAccount']) {
+      expect(preloadSource).toMatch(
+        new RegExp(`${method}:\\s*\\(\\)\\s*=>\\s*ipcRenderer\\.invoke\\('[^']+'\\)`)
+      );
+    }
+
+    expect(preloadSource).not.toMatch(
+      /(getAuthState|signOutKeepSession|welcomeBack|forgetAccount):\s*\([^)]*SESSION_STRING|\([^)]*API_ID|\([^)]*API_HASH/
+    );
   });
 });
