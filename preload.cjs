@@ -1,14 +1,9 @@
-console.log('>>> PRELOAD LOADED <<<');
-
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('telegram', {
 
   getConfig: () =>
     ipcRenderer.invoke('telegram-config'),
-
-  saveCredentials: (data) =>
-    ipcRenderer.invoke('telegram-save-credentials', data),
 
   clearSession: () =>
     ipcRenderer.invoke('telegram-clear-session'),
@@ -30,12 +25,6 @@ contextBridge.exposeInMainWorld('telegram', {
 
   send: (chatId, message) =>
     ipcRenderer.invoke('telegram-send', {
-      chatId,
-      message
-    }),
-
-  testSend: (chatId, message) =>
-    ipcRenderer.invoke('telegram-test-send', {
       chatId,
       message
     }),

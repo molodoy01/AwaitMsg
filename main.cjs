@@ -1,7 +1,24 @@
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
-const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
+const { pathToFileURL } = require('url');
+const { app, BrowserWindow, ipcMain, safeStorage, shell } = require('electron');
+
+if (!app.isPackaged && process.env.npm_lifecycle_event !== 'start') {
+  require('dotenv').config();
+}
+
+const {
+  validateCancelPayload,
+  validateChatId,
+  validateEnabled,
+  validateGeminiGeneratePayload,
+  validateGeminiKey,
+  validateLoginPayload,
+  validateQuery,
+  validateSchedulePayload,
+  validateSendPayload,
+  assertTrustedRenderer
+} = require('./ipc-security.cjs');
 
 const SECURE_CONFIG_PATH = path.join(
   app.getPath('userData'),
@@ -9,6 +26,7 @@ const SECURE_CONFIG_PATH = path.join(
 );
 
 let mainWindow = null;
+let isQuitting = false;
 
 function readSecureConfig() {
   try {
@@ -23,7 +41,7 @@ function writeSecureConfig(data) {
   try {
     fs.writeFileSync(SECURE_CONFIG_PATH, JSON.stringify(data, null, 2));
   } catch (error) {
-    console.error('Secure config write failed:', error);
+    console.error('Secure config write failed:', error?.code || error?.name || 'unknown');
   }
 }
 
@@ -41,7 +59,7 @@ function getGeminiKey() {
   try {
     return safeStorage.decryptString(Buffer.from(encryptedKey, 'base64')).trim();
   } catch (error) {
-    console.error('Gemini key decryption failed:', error);
+    console.error('Gemini key decryption failed:', error?.code || error?.name || 'unknown');
     return '';
   }
 }
@@ -197,7 +215,6 @@ const {
   connectTelegram,
   loginUser,
   getTelegramConfig,
-  saveTelegramCredentials,
   clearTelegramSession,
   getChats,
   getContacts,
@@ -205,6 +222,7 @@ const {
   sendMessage,
   scheduleMessage,
   cancelScheduledMessage,
+  shutdownTelegram,
   setTelegramStatusCallback
 } = require('./telegram.cjs');
 const { generateGeminiContent } = require('./gemini.cjs');
@@ -212,16 +230,6 @@ const { generateGeminiContent } = require('./gemini.cjs');
 setTelegramStatusCallback((status) => {
   sendTelegramStatus(status);
 });
-
-function isTrustedRenderer(event) {
-  const senderUrl = event.senderFrame?.url || '';
-
-  return (
-    senderUrl.startsWith('file://') ||
-    senderUrl.startsWith('http://localhost:5173') ||
-    senderUrl.startsWith('http://127.0.0.1:5173')
-  );
-}
 
 function getGeminiErrorCode(error) {
   const status = error && typeof error === 'object' ? error.status : undefined;
@@ -251,8 +259,17 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.cjs')
     }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url === 'https://aistudio.google.com/app/apikey') {
+      shell.openExternal(url);
+    }
+
+    return { action: 'deny' };
   });
 
   const appUrl = getAppUrl();
@@ -265,9 +282,12 @@ function createWindow() {
 }
 
 ipcMain.handle('gemini-generate', async (event, data = {}) => {
-  if (!isTrustedRenderer(event)) {
-    return { success: false, error: 'Untrusted renderer.' };
-  }
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validated = validateGeminiGeneratePayload(data);
 
   try {
     const apiKey = getGeminiKey();
@@ -276,8 +296,8 @@ ipcMain.handle('gemini-generate', async (event, data = {}) => {
       return { success: false, errorCode: 'setup_required' };
     }
 
-    const result = await generateGeminiContent(data.prompt, {
-      context: data.context,
+    const result = await generateGeminiContent(validated.prompt, {
+      context: validated.context,
       apiKey
     });
 
@@ -286,7 +306,7 @@ ipcMain.handle('gemini-generate', async (event, data = {}) => {
       intent: result
     };
   } catch (error) {
-    console.error('Gemini generation error:', error);
+    console.error('Gemini generation error:', error?.status || error?.code || error?.name || 'unknown');
 
     return {
       success: false,
@@ -295,15 +315,27 @@ ipcMain.handle('gemini-generate', async (event, data = {}) => {
   }
 });
 
-ipcMain.handle('gemini-settings-status', async () => {
+ipcMain.handle('gemini-settings-status', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
   return getGeminiSettings();
 });
 
 ipcMain.handle('gemini-save-key', async (event, key) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validatedKey = validateGeminiKey(key);
+
   try {
-    return { success: true, settings: saveGeminiKey(key) };
+    return { success: true, settings: saveGeminiKey(validatedKey) };
   } catch (error) {
-    console.error('Gemini key save failed:', error);
+    console.error('Gemini key save failed:', error?.code || error?.name || 'unknown');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Gemini key could not be saved.'
@@ -311,20 +343,32 @@ ipcMain.handle('gemini-save-key', async (event, key) => {
   }
 });
 
-ipcMain.handle('gemini-remove-key', async () => {
+ipcMain.handle('gemini-remove-key', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
   try {
     return { success: true, settings: removeGeminiKey() };
   } catch (error) {
-    console.error('Gemini key removal failed:', error);
+    console.error('Gemini key removal failed:', error?.code || error?.name || 'unknown');
     return { success: false, error: 'Gemini key could not be removed.' };
   }
 });
 
 ipcMain.handle('gemini-set-enabled', async (event, enabled) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validatedEnabled = validateEnabled(enabled);
+
   try {
-    return { success: true, settings: setGeminiEnabled(enabled === true) };
+    return { success: true, settings: setGeminiEnabled(validatedEnabled) };
   } catch (error) {
-    console.error('AI Assistant setting update failed:', error);
+    console.error('AI Assistant setting update failed:', error?.code || error?.name || 'unknown');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'AI Assistant setting could not be updated.'
@@ -332,17 +376,27 @@ ipcMain.handle('gemini-set-enabled', async (event, enabled) => {
   }
 });
 
-ipcMain.handle('telegram-connect', async () => {
+ipcMain.handle('telegram-connect', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
   try {
     await connectTelegram();
     return { success: true };
   } catch (error) {
-    console.error('Telegram connection error:', error);
+    console.error('Telegram connection error:', error?.code || error?.name || 'unknown');
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('telegram-config', async () => {
+ipcMain.handle('telegram-config', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
   try {
     const config = getTelegramConfig();
     return {
@@ -354,47 +408,60 @@ ipcMain.handle('telegram-config', async () => {
       }
     };
   } catch (error) {
-    console.error('Telegram config read error:', error);
+    console.error('Telegram config read error:', error?.code || error?.name || 'unknown');
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('telegram-save-credentials', async (event, data = {}) => {
-  try {
-    const result = await saveTelegramCredentials(data);
-    return { success: true, ...result };
-  } catch (error) {
-    console.error('Telegram save credentials error:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('telegram-clear-session', async () => {
+ipcMain.handle('telegram-clear-session', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
   try {
     const result = await clearTelegramSession();
     return { success: true, ...result };
   } catch (error) {
-    console.error('Telegram clear session error:', error);
+    console.error('Telegram clear session error:', error?.code || error?.name || 'unknown');
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('telegram-login', async (event, data = {}) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validated = validateLoginPayload(data);
+
   try {
-    const result = await loginUser(data);
-    return { success: true, ...result };
+    const result = await loginUser(validated);
+    return {
+      success: true,
+      requiresCode: result.requiresCode === true,
+      requiresPassword: result.requiresPassword === true,
+      nextStep: result.nextStep,
+      isCodeViaApp: result.isCodeViaApp === true
+    };
   } catch (error) {
-    console.error('Telegram login error:', error);
+    console.error('Telegram login error:', error?.code || error?.name || 'unknown');
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('telegram-chats', async () => {
+ipcMain.handle('telegram-chats', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
   try {
     const chats = await getChats();
     return { success: true, chats };
   } catch (error) {
-    console.error('Telegram chats error:', error);
+    console.error('Telegram chats error:', error?.code || error?.name || 'unknown');
     return { success: false, error: error.message };
   }
 });
@@ -403,7 +470,12 @@ ipcMain.handle('telegram-chats', async () => {
 // Telegram contacts
 // -------------------------
 
-ipcMain.handle('telegram-contacts', async () => {
+ipcMain.handle('telegram-contacts', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
   try {
     const contacts = await getContacts();
 
@@ -413,7 +485,7 @@ ipcMain.handle('telegram-contacts', async () => {
     };
 
   } catch (error) {
-    console.error('Telegram contacts error:', error);
+    console.error('Telegram contacts error:', error?.code || error?.name || 'unknown');
 
     return {
       success: false,
@@ -428,8 +500,15 @@ ipcMain.handle('telegram-contacts', async () => {
 // -------------------------
 
 ipcMain.handle('telegram-find-chat', async (event, query) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validatedQuery = validateQuery(query);
+
   try {
-    const chat = await resolveChat(query);
+    const chat = await resolveChat(validatedQuery);
 
     return {
       success: true,
@@ -437,7 +516,7 @@ ipcMain.handle('telegram-find-chat', async (event, query) => {
     };
 
   } catch (error) {
-    console.error('Telegram find chat error:', error);
+    console.error('Telegram find chat error:', error?.code || error?.name || 'unknown');
 
     return {
       success: false,
@@ -452,10 +531,17 @@ ipcMain.handle('telegram-find-chat', async (event, query) => {
 // -------------------------
 
 ipcMain.handle('telegram-send', async (event, data) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validated = validateSendPayload(data);
+
   try {
     await sendMessage(
-      data.chatId,
-      data.message
+      validated.chatId,
+      validated.message
     );
 
     return {
@@ -463,7 +549,7 @@ ipcMain.handle('telegram-send', async (event, data) => {
     };
 
   } catch (error) {
-    console.error('Telegram send error:', error);
+    console.error('Telegram send error:', error?.code || error?.name || 'unknown');
 
     return {
       success: false,
@@ -478,20 +564,20 @@ ipcMain.handle('telegram-send', async (event, data) => {
 // -------------------------
 
 ipcMain.handle('telegram-schedule', async (event, data) => {
-  console.log('MAIN: telegram-schedule called', data);
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validated = validateSchedulePayload(data);
 
   try {
     const result = await scheduleMessage(
-      data.chatId,
-      data.message,
-      data.date,
-      data.time,
-      data.targetTimestamp // <--- Передаем точный таймстамп
-    );
-
-    console.log(
-      'Message scheduled. Telegram ID:',
-      result.id
+      validated.chatId,
+      validated.message,
+      undefined,
+      undefined,
+      validated.targetTimestamp
     );
 
     return {
@@ -501,7 +587,7 @@ ipcMain.handle('telegram-schedule', async (event, data) => {
     };
 
   } catch (error) {
-    console.error('Schedule error:', error);
+    console.error('Schedule error:', error?.code || error?.name || 'unknown');
 
     return {
       success: false,
@@ -515,12 +601,17 @@ ipcMain.handle('telegram-schedule', async (event, data) => {
 // -------------------------
 
 ipcMain.handle('telegram-cancel', async (event, data) => {
-  console.log('MAIN: telegram-cancel called', data);
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validated = validateCancelPayload(data);
 
   try {
     await cancelScheduledMessage(
-      data.chatId,
-      data.telegramMessageId
+      validated.chatId,
+      validated.telegramMessageId
     );
 
     return {
@@ -528,33 +619,7 @@ ipcMain.handle('telegram-cancel', async (event, data) => {
     };
 
   } catch (error) {
-    console.error('Cancel error:', error);
-
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-});
-
-// -------------------------
-// Test normal message
-// -------------------------
-
-ipcMain.handle('telegram-test-send', async (event, data) => {
-  console.log('TEST SEND:', data);
-
-  try {
-    await sendMessage(data.chatId, data.message);
-
-    console.log('TEST SEND SUCCESS');
-
-    return {
-      success: true
-    };
-
-  } catch (error) {
-    console.error('TEST SEND ERROR:', error);
+    console.error('Cancel error:', error?.code || error?.name || 'unknown');
 
     return {
       success: false,
@@ -569,6 +634,7 @@ ipcMain.handle('telegram-test-send', async (event, data) => {
 
 app.whenReady().then(() => {
 
+  console.log('AwaitMsg started.');
   createWindow();
 
   app.on('activate', () => {
@@ -588,4 +654,21 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 
+});
+
+app.on('before-quit', (event) => {
+  if (isQuitting) return;
+
+  event.preventDefault();
+  isQuitting = true;
+  console.log('AwaitMsg shutting down.');
+
+  shutdownTelegram()
+    .catch((error) => {
+      console.error('Telegram shutdown error:', error?.code || error?.name || 'unknown');
+    })
+    .finally(() => {
+      console.log('AwaitMsg shutdown complete.');
+      app.exit();
+    });
 });
