@@ -240,6 +240,8 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  mainWindow.webContents.session.setSpellCheckerLanguages(['ru-RU', 'en-US']);
+
   const appUrl = getAppUrl();
 
   if (shouldLoadProductionBuild()) {

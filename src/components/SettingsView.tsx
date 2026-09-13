@@ -9,7 +9,6 @@ type GeminiSettings = {
 
 type SettingsViewProps = {
   onClose: () => void;
-  connected: boolean;
   geminiSettings: GeminiSettings;
   settingsKey: string;
   settingsBusy: boolean;
@@ -22,7 +21,6 @@ type SettingsViewProps = {
 
 export function SettingsView({
   onClose,
-  connected,
   geminiSettings,
   settingsKey,
   settingsBusy,
@@ -54,11 +52,6 @@ export function SettingsView({
     <div className="settings-view">
       <header className="settings-view-header">
         <div className="settings-view-logo">AWAITMSG</div>
-
-        <span className={`settings-telegram-status ${connected ? 'is-connected' : 'is-disconnected'}`}>
-          <span className="settings-status-dot" aria-hidden="true" />
-          Telegram {connected ? 'CONNECTED' : 'DISCONNECTED'}
-        </span>
 
         <button
           type="button"
@@ -187,7 +180,7 @@ export function SettingsView({
               <br />
               for the right moment.
             </p>
-            <p className="settings-version">Version 2.1.3</p>
+            <p className="settings-version">Version 2.1.7</p>
           </section>
         </div>
       </main>

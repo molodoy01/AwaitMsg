@@ -31,7 +31,112 @@ import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
 import { SettingsView } from '@/components/SettingsView';
-import { ArrowRightToLine, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
+
+const TEXT_ANIMATION_CONFIG = {
+  typingSpeed: 28,
+  deletingSpeed: 22,
+  maxCatchUpSteps: 4,
+};
+
+function splitGraphemes(value: string): string[] {
+  const intlWithSegmenter = Intl as typeof Intl & {
+    Segmenter?: new (
+      locales?: string | string[],
+      options?: { granularity: 'grapheme' }
+    ) => {
+      segment(value: string): Iterable<{ segment: string }>;
+    };
+  };
+
+  if (intlWithSegmenter.Segmenter) {
+    const segmenter = new intlWithSegmenter.Segmenter(undefined, {
+      granularity: 'grapheme',
+    });
+
+    return Array.from(segmenter.segment(value), ({ segment }) => segment);
+  }
+
+  return Array.from(value);
+}
+
+function useAnimatedText(targetText: string): string {
+  const [displayedText, setDisplayedText] = useState('');
+  const targetRef = useRef<string[]>([]);
+  const displayedRef = useRef<string[]>([]);
+  const animationFrameRef = useRef<number | null>(null);
+  const lastStepAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    targetRef.current = splitGraphemes(targetText);
+    lastStepAtRef.current = null;
+
+    if (animationFrameRef.current === null) {
+      animationFrameRef.current = window.requestAnimationFrame(function animate(now) {
+        const current = displayedRef.current;
+        const target = targetRef.current;
+        let sharedLength = 0;
+        while (
+          sharedLength < current.length &&
+          sharedLength < target.length &&
+          current[sharedLength] === target[sharedLength]
+        ) {
+          sharedLength += 1;
+        }
+        const isDeleting = current.length > sharedLength;
+        const interval = isDeleting
+          ? TEXT_ANIMATION_CONFIG.deletingSpeed
+          : TEXT_ANIMATION_CONFIG.typingSpeed;
+        const elapsedSinceStep = lastStepAtRef.current === null
+          ? interval
+          : now - lastStepAtRef.current;
+        const elapsed = Math.min(
+          elapsedSinceStep,
+          interval * TEXT_ANIMATION_CONFIG.maxCatchUpSteps
+        );
+        const steps = Math.floor(elapsed / interval);
+
+        if (steps === 0) {
+          animationFrameRef.current = window.requestAnimationFrame(animate);
+          return;
+        }
+
+        if (isDeleting) {
+          displayedRef.current = current.slice(
+            0,
+            Math.max(sharedLength, current.length - steps)
+          );
+        } else if (current.length < target.length) {
+          displayedRef.current = target.slice(
+            0,
+            Math.min(target.length, current.length + steps)
+          );
+        }
+
+        lastStepAtRef.current = elapsedSinceStep > elapsed
+          ? now
+          : (lastStepAtRef.current ?? now - interval) + steps * interval;
+        setDisplayedText(displayedRef.current.join(''));
+
+        if (displayedRef.current.join('') === targetRef.current.join('')) {
+          animationFrameRef.current = null;
+          lastStepAtRef.current = null;
+          return;
+        }
+
+        animationFrameRef.current = window.requestAnimationFrame(animate);
+      });
+    }
+  }, [targetText]);
+
+  useEffect(() => () => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+    }
+  }, []);
+
+  return displayedText;
+}
 
 type AssistantIntent = NonNullable<
   Awaited<ReturnType<Window['gemini']['generate']>>['intent']
@@ -44,6 +149,7 @@ function App() {
   const [message, setMessage] = useState('');
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [assistantResponse, setAssistantResponse] = useState('');
+  const displayedAssistantResponse = useAnimatedText(assistantResponse);
   const [assistantIntent, setAssistantIntent] = useState<AssistantIntent | null>(null);
   const [assistantExampleIndex, setAssistantExampleIndex] = useState(0);
   const [isThinking, setIsThinking] = useState(false);
@@ -147,6 +253,12 @@ function App() {
 
     window.gemini.getSettings().then(setGeminiSettings).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (isSettingsOpen) {
+      setIsConfirmingLogout(false);
+    }
+  }, [isSettingsOpen]);
 
   useEffect(() => {
     return () => {
@@ -1002,6 +1114,7 @@ function App() {
       setConnecting(false);
       setConnected(true);
       setSignedOut(false);
+      setShowAuthForm(false);
       setAuthError('');
     } catch (error) {
       setAuthError(
@@ -1028,6 +1141,7 @@ function App() {
 
       setConnected(false);
       setSignedOut(true);
+      setShowAuthForm(false);
       setReturningUserName(result.authState?.userName || returningUserName);
       setIsConfirmingLogout(false);
       setIsSettingsOpen(false);
@@ -1065,6 +1179,7 @@ function App() {
 
       setSignedOut(result.authState.signedOut);
       setConnected(result.authState.connected);
+      setShowAuthForm(false);
       setReturningUserName(result.authState.userName || returningUserName);
       setConnectionResolved(true);
     } catch (error) {
@@ -1119,8 +1234,10 @@ function App() {
   if (isSettingsOpen) {
     return (
       <SettingsView
-        onClose={() => setIsSettingsOpen(false)}
-        connected={connected}
+        onClose={() => {
+          setShowAuthForm(false);
+          setIsSettingsOpen(false);
+        }}
         geminiSettings={geminiSettings}
         settingsKey={settingsKey}
         settingsBusy={settingsBusy}
@@ -1180,7 +1297,7 @@ function App() {
                   aria-label="Sign out"
                   aria-expanded={isConfirmingLogout}
                 >
-                  <span className="action-icon" aria-hidden="true"><ArrowRightToLine size={16} strokeWidth={1.8} /></span>
+                  <span className="action-icon" aria-hidden="true">↪︎</span>
                   <span className="action-label">Sign out</span>
                 </button>
 
@@ -1226,7 +1343,11 @@ function App() {
               <button
                 type="button"
                 className="settings-action"
-                onClick={() => setIsSettingsOpen(true)}
+                onClick={() => {
+                  setShowAuthForm(false);
+                  setIsConfirmingLogout(false);
+                  setIsSettingsOpen(true);
+                }}
                 title="Settings"
                 aria-label="Settings"
               >
@@ -1243,7 +1364,7 @@ function App() {
           <div className="connection-stage" aria-hidden="true" />
         ) : !connected ? (
           <section className={`auth-panel ${showAuthForm ? 'is-auth-open' : ''}`}>
-            <span className="auth-version">Version 2.1.3</span>
+            <span className="auth-version">Version 2.1.7</span>
             <div className="auth-intro">
               <div className="auth-hero-copy" aria-label="AwaitMsg sign in intro">
                 <span className="auth-hero-line auth-hero-line-main">LET THE MSG</span>
@@ -1255,7 +1376,7 @@ function App() {
                 className="auth-cta"
                 aria-label="Continue with Telegram"
                 onClick={() => {
-                  setShowAuthForm(true);
+                  setShowAuthForm((current) => !current);
                   setAuthStep('phone');
                   setAuthError('');
                 }}
@@ -1309,7 +1430,7 @@ function App() {
               {authError && <p className="auth-error">{authError}</p>}
 
               <button
-                className="auth-button"
+                className="action-button"
                 onClick={handleTelegramAuth}
                 disabled={authBusy || (authStep === 'phone' ? !phoneNumber.trim() : !phoneCode.trim())}
               >
@@ -1341,15 +1462,15 @@ function App() {
             {signedOut && (
               <aside className="returning-user-panel" aria-label="Returning user">
                 <div className="returning-user-copy">
+                  <span className="returning-user-greeting">WELCOME BACK,</span>
                   <button
                     type="button"
-                    className="returning-user-sign-in"
+                    className="returning-user-name"
                     onClick={handleWelcomeBack}
                     disabled={authBusy}
                   >
-                    Sign in
+                    {returningUserName || 'Telegram account'}
                   </button>
-                  <strong>Hello again, {returningUserName || 'Telegram account'}</strong>
                   <div className="returning-user-actions">
                     <button
                       type="button"
@@ -1360,13 +1481,15 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <span className="returning-user-line" aria-hidden="true" />
               </aside>
             )}
           </section>
         ) : (
           <>
-        <section className="hero" aria-label="AwaitMsg assistant">
+        <section
+          className={`hero ${assistantIntent ? 'has-assistant-confirmation' : ''}`}
+          aria-label="AwaitMsg assistant"
+        >
           <div className="hero-slogan">LET IT WAIT.</div>
           <div className="assistant-visual-slot">
           {!geminiSettings.enabled && (
@@ -1396,6 +1519,8 @@ function App() {
               aria-label="Ask AwaitMsg Assistant"
               title="Describe the task — AI will help you write the message and schedule it."
               rows={2}
+              lang="ru"
+              spellCheck
             />
             <button
               type="submit"
@@ -1414,9 +1539,9 @@ function App() {
                 </div>
               )}
 
-              {assistantResponse && (
+              {displayedAssistantResponse && (
                 <p className="assistant-response" aria-live="polite">
-                  {assistantResponse}
+                  {displayedAssistantResponse}
                 </p>
               )}
 
@@ -1490,6 +1615,8 @@ function App() {
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="What should the message say when the moment arrives?"
                 maxLength={4096}
+                lang="ru"
+                spellCheck
               />
             </div>
           </div>
@@ -1548,7 +1675,7 @@ function App() {
           </div>
 
           <button
-            className={`schedule-button ${
+            className={`action-button ${
               successPulse ? 'schedule-success' : ''
             }`}
             onClick={() => handleSchedule()}
@@ -1566,6 +1693,7 @@ function App() {
           <MessagesPanel
             upcoming={upcoming}
             sent={sent}
+            assistantText={displayedAssistantResponse}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             onCancel={handleCancelMessage}
@@ -1581,7 +1709,7 @@ function App() {
 
 
         <footer>
-          <span>Version 2.1.3</span>
+          <span>Version 2.1.7</span>
           <span>{getTimezoneLabel()}</span>
         </footer>
           </>

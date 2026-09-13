@@ -1,10 +1,11 @@
-import { useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ScheduledMessage } from '@/types';
 import { MessageCard } from './MessageCard';
 
 interface Props {
   upcoming: ScheduledMessage[];
   sent: ScheduledMessage[];
+  assistantText: string;
   revealingId: string | null;
   activeTab: 'upcoming' | 'sent';
   onTabChange: (tab: 'upcoming' | 'sent') => void;
@@ -20,6 +21,7 @@ interface Props {
 export function MessagesPanel({
   upcoming,
   sent,
+  assistantText,
   revealingId,
   activeTab,
   onTabChange,
@@ -33,6 +35,13 @@ export function MessagesPanel({
 }: Props) {
   const [showOlderUpcoming, setShowOlderUpcoming] = useState(false);
   const [showOlderSent, setShowOlderSent] = useState(false);
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const autoScrollTimeoutRef = useRef<number | null>(null);
+  const autoScrollActiveRef = useRef(false);
+  const userPinnedRef = useRef(false);
+  const wasNearBottomRef = useRef(true);
+  const scrollStateInitializedRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
 
   const upcomingSorted = [...upcoming].sort(
     (a, b) =>
@@ -96,6 +105,165 @@ export function MessagesPanel({
     showOlderSent,
     activeTab,
   ]);
+
+  useEffect(() => {
+    const scrollingElement = document.scrollingElement;
+    if (!scrollingElement) return;
+
+    const bottomThreshold = 64;
+    const getDistanceFromBottom = () =>
+      scrollingElement.scrollHeight - window.innerHeight - scrollingElement.scrollTop;
+    const isNearBottom = () => getDistanceFromBottom() <= bottomThreshold;
+
+    const cancelAutoScroll = () => {
+      if (autoScrollTimeoutRef.current !== null) {
+        window.clearTimeout(autoScrollTimeoutRef.current);
+        autoScrollTimeoutRef.current = null;
+      }
+
+      if (autoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+        autoScrollFrameRef.current = null;
+      }
+
+      autoScrollActiveRef.current = false;
+    };
+
+    const handleUserInput = () => {
+      cancelAutoScroll();
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      handleUserInput();
+
+      if (event.deltaY < 0) {
+        userPinnedRef.current = true;
+      }
+    };
+
+    const handleScroll = () => {
+      if (autoScrollActiveRef.current) return;
+
+      const currentScrollTop = scrollingElement.scrollTop;
+      const nearBottom = isNearBottom();
+
+      if (currentScrollTop < lastScrollTopRef.current && !nearBottom) {
+        userPinnedRef.current = true;
+      } else if (nearBottom) {
+        userPinnedRef.current = false;
+      }
+
+      lastScrollTopRef.current = currentScrollTop;
+      wasNearBottomRef.current = nearBottom;
+    };
+
+    const runAutoScroll = (startTime: number, startPosition: number, targetPosition: number) => {
+      const elapsed = Math.min(startTime === 0 ? 0 : performance.now() - startTime, 250);
+      const progress = Math.min(1, elapsed / 200);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      scrollingElement.scrollTop = Math.round(
+        startPosition + (targetPosition - startPosition) * easedProgress
+      );
+
+      if (progress >= 1 || userPinnedRef.current) {
+        autoScrollActiveRef.current = false;
+        autoScrollFrameRef.current = null;
+        lastScrollTopRef.current = scrollingElement.scrollTop;
+        wasNearBottomRef.current = isNearBottom();
+        return;
+      }
+
+      autoScrollFrameRef.current = window.requestAnimationFrame((now) =>
+        runAutoScroll(startTime || now, startPosition, targetPosition)
+      );
+    };
+
+    const scheduleAutoScroll = () => {
+      if (!wasNearBottomRef.current || userPinnedRef.current) return;
+
+      if (autoScrollTimeoutRef.current !== null) {
+        window.clearTimeout(autoScrollTimeoutRef.current);
+      }
+
+      autoScrollTimeoutRef.current = window.setTimeout(() => {
+        autoScrollTimeoutRef.current = null;
+
+        if (userPinnedRef.current || !wasNearBottomRef.current) return;
+
+        const targetPosition = Math.max(
+          0,
+          scrollingElement.scrollHeight - window.innerHeight
+        );
+        const startPosition = scrollingElement.scrollTop;
+
+        if (targetPosition <= startPosition) return;
+
+        autoScrollActiveRef.current = true;
+        autoScrollFrameRef.current = window.requestAnimationFrame((now) =>
+          runAutoScroll(now, startPosition, targetPosition)
+        );
+      }, 75);
+    };
+
+    if (!scrollStateInitializedRef.current) {
+      lastScrollTopRef.current = scrollingElement.scrollTop;
+      wasNearBottomRef.current = isNearBottom();
+      scrollStateInitializedRef.current = true;
+    }
+    scrollingElement.addEventListener('scroll', handleScroll, { passive: true });
+    document.addEventListener('wheel', handleWheel, { capture: true, passive: true });
+    document.addEventListener('touchstart', handleUserInput, { capture: true, passive: true });
+    document.addEventListener('touchmove', handleUserInput, { capture: true, passive: true });
+    document.addEventListener('pointerdown', handleUserInput, { capture: true, passive: true });
+    scheduleAutoScroll();
+
+    return () => {
+      cancelAutoScroll();
+      scrollingElement.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('wheel', handleWheel, true);
+      document.removeEventListener('touchstart', handleUserInput, true);
+      document.removeEventListener('touchmove', handleUserInput, true);
+      document.removeEventListener('pointerdown', handleUserInput, true);
+    };
+  }, [
+    activeTab,
+    recentUpcoming.length,
+    recentSent.length,
+    olderUpcoming.length,
+    olderSent.length,
+    showOlderUpcoming,
+    showOlderSent,
+  ]);
+
+  useLayoutEffect(() => {
+    const scrollingElement = document.scrollingElement;
+    if (
+      !scrollingElement ||
+      !assistantText ||
+      !wasNearBottomRef.current ||
+      userPinnedRef.current
+    ) {
+      return;
+    }
+
+    if (autoScrollTimeoutRef.current !== null) {
+      window.clearTimeout(autoScrollTimeoutRef.current);
+      autoScrollTimeoutRef.current = null;
+    }
+
+    if (autoScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+
+    autoScrollActiveRef.current = false;
+    scrollingElement.scrollTop = Math.max(
+      0,
+      scrollingElement.scrollHeight - window.innerHeight
+    );
+    lastScrollTopRef.current = scrollingElement.scrollTop;
+    wasNearBottomRef.current = true;
+  }, [assistantText]);
 
   return (
     <div className="messages-panel">
