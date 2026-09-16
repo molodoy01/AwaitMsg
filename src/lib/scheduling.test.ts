@@ -6,6 +6,7 @@ import {
   createPendingSchedule,
   findMatchingScheduledMessage,
   getPendingSchedules,
+  getScheduleOccurrences,
 } from './scheduling';
 
 function createMemoryStorage() {
@@ -57,6 +58,22 @@ describe('Pending scheduling recovery', () => {
 
     expect(loadUpcoming()).toEqual([pending]);
     expect(loadUpcoming()[0].status).toBe('pending');
+  });
+
+  it('keeps attachments on a pending record for restart recovery', () => {
+    const pending = createPendingSchedule({
+      operationId: 'operation-with-file',
+      chatId: 'chat-1',
+      chatName: 'Test chat',
+      text: 'Send the update',
+      when: '2030-01-01T10:00:00.000Z',
+      createdAt: '2029-12-31T10:00:00.000Z',
+      attachments: ['C:\\media\\announcement.png'],
+    });
+
+    saveUpcoming([pending]);
+
+    expect(loadUpcoming()[0].attachments).toEqual(['C:\\media\\announcement.png']);
   });
 
   it('moves Pending to Scheduled after successful scheduling', () => {
@@ -128,5 +145,38 @@ describe('Pending scheduling recovery', () => {
 
     expect(loadUpcoming()).toEqual([pending]);
     expect(loadUpcoming()[0].status).toBe('pending');
+  });
+});
+
+describe('Schedule recurrence dates', () => {
+  it('keeps the start and adds daily occurrences', () => {
+    const start = new Date(2030, 0, 10, 9, 30);
+    const dates = getScheduleOccurrences(start, { mode: 'daily', occurrences: 3 });
+
+    expect(dates.map((date) => date.getDate())).toEqual([10, 11, 12]);
+    expect(dates.every((date) => date.getHours() === 9 && date.getMinutes() === 30)).toBe(true);
+  });
+
+  it('uses selected weekdays for a weekly series', () => {
+    const start = new Date(2030, 0, 7, 9, 30);
+    const dates = getScheduleOccurrences(start, { mode: 'weekly', days: ['Mon', 'Wed'], occurrences: 4 });
+
+    expect(dates.map((date) => `${date.getMonth()}-${date.getDate()}`)).toEqual([
+      '0-7',
+      '0-9',
+      '0-14',
+      '0-16',
+    ]);
+  });
+
+  it('clamps monthly dates to the last day of shorter months', () => {
+    const start = new Date(2030, 0, 31, 9, 30);
+    const dates = getScheduleOccurrences(start, { mode: 'monthly', occurrences: 3 });
+
+    expect(dates.map((date) => `${date.getMonth()}-${date.getDate()}`)).toEqual([
+      '0-31',
+      '1-28',
+      '2-31',
+    ]);
   });
 });

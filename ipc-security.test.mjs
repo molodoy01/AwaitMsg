@@ -29,6 +29,17 @@ describe('IPC security validation', () => {
     )).not.toThrow();
   });
 
+  it('accepts the same page when the renderer is on a hash route such as /workspace', () => {
+    expect(() => assertTrustedRenderer(
+      {
+        sender: webContents,
+        senderFrame: { url: `${fileUrl}#/workspace` }
+      },
+      webContents,
+      fileUrl
+    )).not.toThrow();
+  });
+
   it('rejects an unknown sender and a mismatched webContents', () => {
     expect(() => assertTrustedRenderer(
       {
@@ -56,6 +67,32 @@ describe('IPC security validation', () => {
       chatId: 'me',
       message: 'x'.repeat(4097)
     })).toThrow('too long');
+
+    expect(validateSendPayload({
+      chatId: 'me',
+      message: 'With media',
+      attachments: ['C:\\media\\photo.jpg'],
+      entities: [
+        { type: 'bold', offset: 0, length: 4 },
+        { type: 'text_url', offset: 5, length: 5, url: 'https://example.com' }
+      ]
+    })).toMatchObject({
+      attachments: ['C:\\media\\photo.jpg'],
+      entities: [
+        { type: 'bold', offset: 0, length: 4 },
+        { type: 'text_url', offset: 5, length: 5, url: 'https://example.com' }
+      ]
+    });
+    expect(() => validateSendPayload({
+      chatId: 'me',
+      message: 'short',
+      entities: [{ type: 'bold', offset: 4, length: 2 }]
+    })).toThrow('range');
+    expect(() => validateSendPayload({
+      chatId: 'me',
+      message: 'link',
+      entities: [{ type: 'text_url', offset: 0, length: 4, url: 'javascript:bad' }]
+    })).toThrow('url');
   });
 
   it('rejects invalid timestamps and scheduling payloads', () => {

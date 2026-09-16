@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ChatPicker } from '@/components/ChatPicker';
+import { Clock } from 'lucide-react';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { Notification } from '@/components/Notification';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -7,6 +7,7 @@ import { WorkspaceTextStage } from '@/components/WorkspaceTextStage';
 import { createTemplate, deleteTemplate, insertTextAtSelection, updateTemplate } from '@/lib/templates';
 import { normalizeRichTextEntities, richTextToHtml } from '@/lib/richText';
 import { loadTemplates, saveTemplates } from '@/lib/storage';
+import type { ScheduleRepeatOptions } from '@/lib/scheduling';
 import type {
   Chat,
   PreviewChatHistory,
@@ -43,7 +44,7 @@ type WorkspacePageProps = {
     time: string;
     attachments?: string[];
     entities?: RichTextEntity[];
-  }) => void;
+  }, repeat?: ScheduleRepeatOptions) => void;
   handleSendDraftNow: (chat: Chat, text: string, attachments?: string[], entities?: RichTextEntity[]) => Promise<void>;
   publishingDraft: boolean;
   handleCancelMessage: (message: ScheduledMessage) => void;
@@ -198,11 +199,12 @@ export function WorkspacePage({
   const [savedAt, setSavedAt] = useState(
     () => initialDraftRef.current?.savedAt ?? 'Not saved',
   );
-  const [stageMode, setStageMode] = useState<'editor' | 'schedule' | 'template'>('editor');
-  const [repeatMode, setRepeatMode] = useState<'none' | 'weekly'>('none');
-  const [repeatEvery, setRepeatEvery] = useState('week');
+  const [stageMode, setStageMode] = useState<'editor' | 'schedule' | 'template' | 'chat'>('editor');
+  const [workspaceSelectedChats, setWorkspaceSelectedChats] = useState<Chat[]>([]);
+  const workspaceChatOriginRef = useRef<Chat | null>(null);
+  const [repeatMode, setRepeatMode] = useState<ScheduleRepeatOptions['mode']>('none');
   const [repeatDays, setRepeatDays] = useState<string[]>([]);
-  const [repeatEnds, setRepeatEnds] = useState('never');
+  const [repeatOccurrences, setRepeatOccurrences] = useState(5);
   const [templateEditingId, setTemplateEditingId] = useState<string | null>(null);
   const [templateDraftName, setTemplateDraftName] = useState('');
   const [templateDraftBody, setTemplateDraftBody] = useState('');
@@ -246,6 +248,11 @@ export function WorkspacePage({
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (stageMode === 'chat') {
+          setSelectedChat(workspaceChatOriginRef.current);
+          workspaceChatOriginRef.current = null;
+          setWorkspaceSelectedChats([]);
+        }
         setStageMode('editor');
         setTemplateEditingId(null);
         setTemplateDraftName('');
@@ -255,6 +262,20 @@ export function WorkspacePage({
 
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [setSelectedChat, stageMode]);
+
+  useEffect(() => {
+    if (stageMode !== 'editor') return;
+
+    const returnToSchedule = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+
+      event.preventDefault();
+      window.location.hash = '#/';
+    };
+
+    document.addEventListener('keydown', returnToSchedule);
+    return () => document.removeEventListener('keydown', returnToSchedule);
   }, [stageMode]);
 
   useEffect(() => {
@@ -365,14 +386,27 @@ export function WorkspacePage({
     || selectedChat?.type
     || 'Chat';
   const previewHistoryGroups = (() => {
-    const groups: { key: string; messages: PreviewChatHistory['messages'] }[] = [];
+    const groups: {
+      key: string;
+      groupId?: string;
+      messages: PreviewChatHistory['messages'];
+    }[] = [];
 
     for (const message of previewHistory?.messages ?? []) {
       const previous = groups[groups.length - 1];
-      if (message.groupId && previous?.key === message.groupId) {
+      const groupHasMedia = previous?.messages.some((item) => item.media) ?? false;
+      if (
+        message.groupId &&
+        previous?.groupId === message.groupId &&
+        (Boolean(message.media) || groupHasMedia)
+      ) {
         previous.messages.push(message);
       } else {
-        groups.push({ key: message.groupId || message.id, messages: [message] });
+        groups.push({
+          key: message.media ? message.groupId || message.id : message.id,
+          groupId: message.groupId,
+          messages: [message],
+        });
       }
     }
 
@@ -532,7 +566,38 @@ export function WorkspacePage({
     setTemplateDraftBody('');
   };
 
-  const changeStageMode = (nextMode: 'editor' | 'schedule' | 'template') => {
+  const openChatSelection = () => {
+    if (stageMode === 'chat') {
+      backFromChatSelection();
+      return;
+    }
+
+    workspaceChatOriginRef.current = selectedChat;
+    setWorkspaceSelectedChats((current) => current.length > 0 ? current : selectedChat ? [selectedChat] : []);
+    setStageMode('chat');
+  };
+
+  const backFromChatSelection = () => {
+    setSelectedChat(workspaceChatOriginRef.current);
+    workspaceChatOriginRef.current = null;
+    setWorkspaceSelectedChats([]);
+    setStageMode('editor');
+  };
+
+  const completeChatSelection = () => {
+    const availableChats = workspaceSelectedChats.filter((chat) => chats.some((item) => item.id === chat.id));
+    setWorkspaceSelectedChats(availableChats);
+    setSelectedChat(availableChats[0] ?? null);
+    workspaceChatOriginRef.current = null;
+    setStageMode('editor');
+  };
+
+  const changeStageMode = (nextMode: 'editor' | 'schedule' | 'template' | 'chat') => {
+    if (stageMode === 'chat' && nextMode !== 'chat') {
+      setSelectedChat(workspaceChatOriginRef.current);
+      workspaceChatOriginRef.current = null;
+      setWorkspaceSelectedChats([]);
+    }
     if (nextMode !== 'template') closeTemplateEditor();
     setStageMode(nextMode);
   };
@@ -585,12 +650,16 @@ export function WorkspacePage({
         visible={notification.visible}
         onClose={closeNotification}
       />
+      <header className="topbar workspace-page-topbar">
+        <div className="topbar-identity">
+          <div className="brand">STUDIO</div>
+        </div>
+      </header>
       <div className="workspace-page-shell">
         <main className="workspace-page-main">
           <section className="workspace-page-panel workspace-page-editor-panel">
                 <div className="workspace-page-editor-heading">
                   <div className="workspace-page-editor-title">
-                    <a href="#/" className="workspace-page-back-link">Schedule</a>
                     <span>Create Post</span>
                   </div>
                 </div>
@@ -600,13 +669,19 @@ export function WorkspacePage({
                 <div className="workspace-page-form-row">
                   <label className="workspace-page-field-label" aria-label="Channel selector" />
                   <div className="workspace-page-channel-picker">
-                    <ChatPicker
-                      chats={chats}
-                      selectedChat={selectedChat}
-                      onSelect={setSelectedChat}
-                      onAddChat={onAddChat}
-                      onRemoveChat={onRemoveChat}
-                    />
+                    <button type="button" className="workspace-page-chat-trigger" onClick={openChatSelection} aria-label="Choose chat">
+                      {selectedChat ? (
+                        <>
+                          <span className="workspace-page-chat-trigger-avatar" aria-hidden="true">
+                            {selectedChat.avatarDataUrl ? <img src={selectedChat.avatarDataUrl} alt="" /> : selectedChat.name.slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="workspace-page-chat-trigger-copy">
+                            <strong>{selectedChat.name}</strong>
+                            <span>{selectedChat.name === 'Saved Messages' ? 'Saved Messages' : selectedChat.type || 'Chat'}</span>
+                          </span>
+                        </>
+                      ) : 'Choose chat'}
+                    </button>
                   </div>
                 </div>
 
@@ -624,6 +699,13 @@ export function WorkspacePage({
                         mode={stageMode}
                         onModeChange={changeStageMode}
                         selectedChat={selectedChat}
+                        chats={chats}
+                        selectedChats={workspaceSelectedChats}
+                        onChatSelectionChange={setWorkspaceSelectedChats}
+                        onChatSelectionDone={completeChatSelection}
+                        onChatSelectionBack={backFromChatSelection}
+                        onAddChat={onAddChat}
+                        onRemoveChat={onRemoveChat}
                         draftBody={draftBody}
                         draftEntities={draftEntities}
                         date={date}
@@ -632,7 +714,7 @@ export function WorkspacePage({
                         setTime={setTime}
                         scheduling={scheduling}
                         canSchedule={canSchedule}
-                        onSchedule={(entities) => {
+                        onSchedule={(entities, repeat) => {
                           if (!selectedChat) return;
                           handleSchedule({
                             chatId: selectedChat.id,
@@ -641,17 +723,15 @@ export function WorkspacePage({
                             time,
                             entities,
                             attachments: attachments.map((attachment) => attachment.path).filter(Boolean),
-                          });
+                          }, repeat);
                           setStageMode('editor');
                         }}
                         repeatMode={repeatMode}
                         setRepeatMode={setRepeatMode}
-                        repeatEvery={repeatEvery}
-                        setRepeatEvery={setRepeatEvery}
                         repeatDays={repeatDays}
                         setRepeatDays={setRepeatDays}
-                        repeatEnds={repeatEnds}
-                        setRepeatEnds={setRepeatEnds}
+                        repeatOccurrences={repeatOccurrences}
+                        setRepeatOccurrences={setRepeatOccurrences}
                         templates={templates}
                         onInsertTemplate={insertTextAtCursor}
                         templateEditingId={templateEditingId}
@@ -668,6 +748,38 @@ export function WorkspacePage({
                   />
                 </div>
 
+              </div>
+
+              {attachments.length > 0 && (
+                <div className="workspace-page-attachment-tray" aria-label="Attached files">
+                  <div className="workspace-page-media-items">
+                    {attachments.map((file, index) => (
+                      <div key={`${file.name}-${index}`} className="workspace-page-attachment-card">
+                        {isImageAttachment(file) && file.path ? (
+                          <img
+                            src={toFileUrl(file.path)}
+                            alt=""
+                            className="workspace-page-attachment-thumbnail"
+                          />
+                        ) : (
+                          <div className="workspace-page-attachment-file-mark">FILE</div>
+                        )}
+                        <span className="workspace-page-attachment-name">{file.name}</span>
+                        <button
+                          type="button"
+                          className="workspace-page-attachment-remove"
+                          onClick={() => handleRemoveAttachment(index)}
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="workspace-page-action-row workspace-page-schedule-row">
                 <div className="workspace-page-media-row">
                   <button
                     type="button"
@@ -680,34 +792,6 @@ export function WorkspacePage({
                       <path d="M9.6 12.4 16.7 5.3a3.7 3.7 0 1 1 5.2 5.2l-9.4 9.4a5.9 5.9 0 1 1-8.4-8.4l9.9-9.9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </button>
-                  <div className="workspace-page-media-items">
-                    {attachments.length > 0 ? (
-                      attachments.map((file, index) => (
-                        <div key={`${file.name}-${index}`} className="workspace-page-attachment-card">
-                          {isImageAttachment(file) && file.path ? (
-                            <img
-                              src={toFileUrl(file.path)}
-                              alt=""
-                              className="workspace-page-attachment-thumbnail"
-                            />
-                          ) : (
-                            <div className="workspace-page-attachment-file-mark">FILE</div>
-                          )}
-                          <span className="workspace-page-attachment-name">{file.name}</span>
-                          <button
-                            type="button"
-                            className="workspace-page-attachment-remove"
-                            onClick={() => handleRemoveAttachment(index)}
-                            aria-label={`Remove ${file.name}`}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="workspace-page-empty-attachments">No files attached</div>
-                    )}
-                  </div>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -716,10 +800,6 @@ export function WorkspacePage({
                     className="workspace-page-hidden-file-input"
                   />
                 </div>
-
-              </div>
-
-              <div className="workspace-page-action-row workspace-page-schedule-row">
                 <div className="workspace-page-action-left-group">
                   <button
                     type="button"
@@ -747,7 +827,7 @@ export function WorkspacePage({
                         closeTemplateEditor();
                         setStageMode('editor');
                       } else {
-                        setStageMode('template');
+                        changeStageMode('template');
                       }
                     }}
                     aria-pressed={stageMode === 'template'}
@@ -760,9 +840,10 @@ export function WorkspacePage({
                   <button
                     type="button"
                     className="workspace-page-schedule-menu-trigger"
-                    onClick={() => changeStageMode('schedule')}
+                    onClick={() => changeStageMode(stageMode === 'schedule' ? 'editor' : 'schedule')}
                   >
-                    <span aria-hidden="true">◷</span> {scheduleSummary === 'Schedule' ? 'Schedule' : scheduleSummary}
+                    <Clock className="workspace-page-schedule-menu-icon" aria-hidden="true" size={16} strokeWidth={1.9} />
+                    <span>{scheduleSummary === 'Schedule' ? 'Schedule' : scheduleSummary}</span>
                   </button>
                 </div>
 
@@ -798,6 +879,10 @@ export function WorkspacePage({
                         attachments: attachments
                           .map((attachment) => attachment.path)
                           .filter(Boolean),
+                      }, {
+                        mode: repeatMode,
+                        days: repeatDays,
+                        occurrences: repeatMode === 'none' ? 1 : repeatOccurrences,
                       });
                     }}
                     disabled={!canSchedule}
@@ -922,14 +1007,15 @@ export function WorkspacePage({
 
                 {previewHistoryGroups.map((group) => {
                   const firstMessage = group.messages[0];
+                  const hasMedia = group.messages.some((message) => message.media);
                   const caption = group.messages.find((message) => message.text)?.text;
 
                   return (
                     <article
-                      className={`workspace-page-preview-bubble workspace-page-preview-history-bubble ${firstMessage.outgoing ? 'is-outgoing' : 'is-incoming'}`}
+                      className={`workspace-page-preview-bubble workspace-page-preview-history-bubble ${hasMedia ? '' : 'workspace-page-preview-text-only'} ${firstMessage.outgoing ? 'is-outgoing' : 'is-incoming'}`}
                       key={group.key}
                     >
-                      {group.messages.some((message) => message.media) && (
+                      {hasMedia && (
                         <div className={`workspace-page-preview-history-media ${group.messages.length > 1 ? 'is-album' : ''}`}>
                           {group.messages.map((message) => (
                             <div className="workspace-page-preview-history-media-item" key={message.id}>
@@ -943,7 +1029,15 @@ export function WorkspacePage({
                           {firstMessage.senderName}
                         </div>
                       )}
-                      {caption && <div className="workspace-page-preview-message">{caption}</div>}
+                      {hasMedia
+                        ? caption && <div className="workspace-page-preview-message">{caption}</div>
+                        : group.messages
+                          .filter((message) => message.text)
+                          .map((message) => (
+                            <div className="workspace-page-preview-message" key={message.id}>
+                              {message.text}
+                            </div>
+                          ))}
                       <div className="workspace-page-preview-meta">
                         <span>{new Date(firstMessage.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>

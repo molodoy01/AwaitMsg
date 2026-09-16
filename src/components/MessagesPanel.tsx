@@ -281,7 +281,7 @@ export function MessagesPanel({
         </button>
 
         <button
-          className={`tab ${
+          className={`tab history-tab ${
             activeTab === 'sent' ? 'active' : ''
           }`}
           onClick={() => onTabChange('sent')}

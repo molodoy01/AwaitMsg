@@ -8,7 +8,7 @@ interface Props {
   entities: RichTextEntity[];
   onChange: (text: string, entities: RichTextEntity[]) => void;
   stageContent?: ReactNode;
-  stageMode?: 'editor' | 'schedule' | 'template';
+  stageMode?: 'editor' | 'schedule' | 'template' | 'chat';
 }
 
 type FormatCommand = 'bold' | 'italic' | 'underline' | 'strikeThrough';

@@ -5,6 +5,9 @@ const MAX_PHONE_LENGTH = 32;
 const MAX_API_HASH_LENGTH = 256;
 const MAX_PASSWORD_LENGTH = 512;
 const MAX_CODE_LENGTH = 32;
+const MAX_ATTACHMENT_PATH_LENGTH = 4096;
+const MAX_ATTACHMENTS = 10;
+const MAX_FORMATTING_ENTITIES = 100;
 const MIN_TIMESTAMP = 946684800;
 const MAX_TIMESTAMP = 4102444800;
 
@@ -50,6 +53,30 @@ function validateMessage(value) {
   return validateString(value, 'message', { max: MAX_MESSAGE_LENGTH });
 }
 
+function validateFormattingEntities(value, messageLength) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_FORMATTING_ENTITIES) {
+    invalidInput('entities must be an array');
+  }
+
+  return value.map((entity, index) => {
+    if (!isPlainObject(entity)) invalidInput(`entities[${index}] must be an object`);
+    if (!['bold', 'italic', 'underline', 'strikethrough', 'text_url'].includes(entity.type)) {
+      invalidInput(`entities[${index}].type is invalid`);
+    }
+    if (!Number.isInteger(entity.offset) || !Number.isInteger(entity.length) || entity.offset < 0 || entity.length < 1 || entity.offset + entity.length > messageLength) {
+      invalidInput(`entities[${index}] has an invalid range`);
+    }
+    if (entity.type === 'text_url') {
+      if (typeof entity.url !== 'string' || entity.url.length > 2048 || !/^(?:https?:\/\/|tg:)/i.test(entity.url)) {
+        invalidInput(`entities[${index}].url is invalid`);
+      }
+      return { type: entity.type, offset: entity.offset, length: entity.length, url: entity.url };
+    }
+    return { type: entity.type, offset: entity.offset, length: entity.length };
+  });
+}
+
 function validateTimestamp(value) {
   if (!Number.isInteger(value) || value < MIN_TIMESTAMP || value > MAX_TIMESTAMP) {
     invalidInput('targetTimestamp has an invalid range');
@@ -70,8 +97,41 @@ function validateSchedulePayload(value) {
   return {
     chatId: validateChatId(value.chatId),
     message: validateMessage(value.message),
-    targetTimestamp: validateTimestamp(value.targetTimestamp)
+    entities: validateFormattingEntities(value.entities, value.message.length),
+    targetTimestamp: validateTimestamp(value.targetTimestamp),
+    attachments: validateAttachments(value.attachments)
   };
+}
+
+function validateHistoryPayload(value) {
+  if (!isPlainObject(value)) {
+    invalidInput('history payload must be an object');
+  }
+
+  const limit = value.limit === undefined ? 50 : value.limit;
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    invalidInput('history limit has an invalid range');
+  }
+
+  return {
+    chatId: validateChatId(value.chatId),
+    limit
+  };
+}
+
+function validateAttachments(value) {
+  if (value === undefined) return [];
+
+  if (!Array.isArray(value) || value.length > MAX_ATTACHMENTS) {
+    invalidInput('attachments must be an array');
+  }
+
+  return value.map((attachment, index) =>
+    validateString(attachment, `attachments[${index}]`, {
+      max: MAX_ATTACHMENT_PATH_LENGTH
+    })
+  );
 }
 
 function validateCancelPayload(value) {
@@ -101,7 +161,9 @@ function validateSendPayload(value) {
 
   return {
     chatId: validateChatId(value.chatId),
-    message: validateMessage(value.message)
+    message: validateMessage(value.message),
+    entities: validateFormattingEntities(value.entities, value.message.length),
+    attachments: validateAttachments(value.attachments)
   };
 }
 
@@ -198,6 +260,7 @@ function assertTrustedRenderer(event, expectedWebContents, allowedFileUrl) {
   const sender = event?.sender;
   const trustedUrl =
     senderUrl === allowedFileUrl ||
+    senderUrl.startsWith(`${allowedFileUrl}#`) ||
     senderUrl.startsWith('http://localhost:5173/') ||
     senderUrl.startsWith('http://127.0.0.1:5173/');
 
@@ -213,6 +276,7 @@ module.exports = {
   validateTimestamp,
   validateQuery,
   validateSchedulePayload,
+  validateHistoryPayload,
   validateCancelPayload,
   validateSendPayload,
   validateLoginPayload,

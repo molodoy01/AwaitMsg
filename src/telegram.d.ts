@@ -1,5 +1,12 @@
 export {};
 
+type TelegramFormattingEntity = {
+  type: 'bold' | 'italic' | 'underline' | 'strikethrough' | 'text_url';
+  offset: number;
+  length: number;
+  url?: string;
+};
+
 declare global {
   interface TelegramAuthState {
     hasSession: boolean;
@@ -80,10 +87,11 @@ declare global {
       clearSession: () => Promise<{ success: boolean; cleared?: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; error?: string }>;
       login: (data: { API_ID?: string | number; API_HASH?: string; phoneNumber?: string; phone?: string; password?: string; phoneCode?: string; apiId?: string | number; apiHash?: string }) => Promise<{ success: boolean; requiresCode?: boolean; requiresPassword?: boolean; nextStep?: string; error?: string; isCodeViaApp?: boolean }>;
       connect: () => Promise<{ success: boolean; error?: string }>;
-      getChats: () => Promise<{ success: boolean; chats?: { id: string; name: string }[]; error?: string }>;
+      getChats: () => Promise<{ success: boolean; chats?: { id: string; name: string; username?: string; type?: 'private' | 'group' | 'supergroup' | 'channel' | 'unknown'; avatarDataUrl?: string }[]; error?: string }>;
+      getChatAvatar: (chatId: string) => Promise<{ success: boolean; avatarDataUrl?: string; error?: string }>;
       findChat: (query: string) => Promise<{
         success: boolean;
-        chat?: { id: string; name: string };
+        chat?: { id: string; name: string; username?: string; type?: 'private' | 'group' | 'supergroup' | 'channel' | 'unknown'; avatarDataUrl?: string };
         error?: string;
       }>;
       getContacts: () => Promise<{
@@ -91,7 +99,7 @@ declare global {
         contacts?: { id: string; name: string; username?: string; phone?: string }[];
         error?: string;
       }>;
-      send: (chatId: string, message: string) => Promise<{
+      send: (chatId: string, message: string, attachments?: string[], entities?: TelegramFormattingEntity[]) => Promise<{
         success: boolean;
         error?: string;
       }>;
@@ -99,6 +107,8 @@ declare global {
         chatId: string;
         message: string;
         targetTimestamp: number;
+        attachments?: string[];
+        entities?: TelegramFormattingEntity[];
       }) => Promise<{
         success: boolean;
         id?: string | number;
@@ -106,6 +116,42 @@ declare global {
         confirmed?: boolean;
         error?: string;
       }>;
+      getChatHistory: (data: { chatId: string; limit?: number }) => Promise<{
+        success: boolean;
+        history?: {
+          chat: {
+            id: string;
+            title: string;
+            username?: string;
+            type?: string;
+            avatarDataUrl?: string;
+            topic?: string;
+          };
+          messages: {
+            id: string;
+            text: string;
+            date: string;
+            outgoing: boolean;
+            senderName?: string;
+            mediaType?: string;
+            mediaName?: string;
+            groupId?: string;
+            media?: {
+              kind: 'photo' | 'video' | 'document' | 'audio' | 'unknown';
+              name?: string;
+              mimeType?: string;
+              size?: number;
+              duration?: number;
+              width?: number;
+              height?: number;
+              thumbnailDataUrl?: string;
+              dataUrl?: string;
+            };
+          }[];
+        };
+        error?: string;
+      }>;
+      getFilePath: (file: File) => string;
       cancel: (data: {
         chatId: string;
         telegramMessageId: string | number;

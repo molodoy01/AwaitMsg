@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('telegram', {
 
@@ -29,20 +29,31 @@ contextBridge.exposeInMainWorld('telegram', {
   getChats: () =>
     ipcRenderer.invoke('telegram-chats'),
 
+  getChatAvatar: (chatId) =>
+    ipcRenderer.invoke('telegram-chat-avatar', chatId),
+
   findChat: (query) =>
     ipcRenderer.invoke('telegram-find-chat', query),
 
   getContacts: () =>
     ipcRenderer.invoke('telegram-contacts'),
 
-  send: (chatId, message) =>
+  send: (chatId, message, attachments = [], entities = []) =>
     ipcRenderer.invoke('telegram-send', {
       chatId,
-      message
+      message,
+      attachments,
+      entities
     }),
 
   schedule: (data) =>
     ipcRenderer.invoke('telegram-schedule', data),
+
+  getChatHistory: (data) =>
+    ipcRenderer.invoke('telegram-chat-history', data),
+
+  getFilePath: (file) =>
+    webUtils.getPathForFile(file),
 
   cancel: (data) =>
     ipcRenderer.invoke('telegram-cancel', data),

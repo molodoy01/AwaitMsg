@@ -586,23 +586,16 @@ function notifyTelegramStatus(status) {
 // =========================================================
 // TIMEOUT
 // =========================================================
-
 function withTimeout(promise, timeout, operation) {
   return withLifecycleTimeout(
     promise,
     timeout,
-    () => console.error(`${operation} timed out; underlying request may still be running.`)
+    operation
   );
 }
 
-// =========================================================
-// INTERNET CHECK
-// =========================================================
-
 async function checkInternetConnection() {
   return new Promise((resolve, reject) => {
-    const https = require('https');
-
     const request = https.get(
       'https://telegram.org',
       {
@@ -610,7 +603,6 @@ async function checkInternetConnection() {
       },
       (response) => {
         response.resume();
-
         if (
           response.statusCode >= 200 &&
           response.statusCode < 500
@@ -1034,6 +1026,26 @@ async function shutdownTelegram() {
 // GET CHATS
 // =========================================================
 
+async function getChatAvatarDataUrl(entity) {
+  if (!entity) return '';
+
+  try {
+    const avatar = await telegramRequest(() => withTimeout(
+      client.downloadProfilePhoto(entity),
+      REQUEST_TIMEOUT,
+      'Loading Telegram chat avatar'
+    ));
+
+    if (avatar && (Buffer.isBuffer(avatar) || avatar instanceof Uint8Array)) {
+      return `data:image/jpeg;base64,${Buffer.from(avatar).toString('base64')}`;
+    }
+  } catch (error) {
+    console.error('Telegram chat avatar unavailable:', error?.code || error?.name || 'unknown');
+  }
+
+  return '';
+}
+
 async function getChatsInternal() {
 
   if (!client) {
@@ -1041,13 +1053,19 @@ async function getChatsInternal() {
   }
 
   const dialogs = await telegramRequest(() => client.getDialogs({
-    limit: 50
+    limit: 100
   }));
 
-  const chats = dialogs.map((dialog) => ({
-    id: dialog.id?.toString(),
-    name: dialog.name || 'Unnamed chat'
-  }));
+  const chats = dialogs.map((dialog) => {
+    const entity = dialog?.entity || null;
+
+    return {
+      id: dialog.id?.toString(),
+      name: dialog.name || getEntityDisplayName(entity),
+      username: entity?.username || '',
+      type: getPublicChatType(entity) || 'private'
+    };
+  });
 
   try {
 
@@ -1063,7 +1081,10 @@ async function getChatsInternal() {
 
       filteredChats.unshift({
         id: myId,
-        name: 'Saved Messages'
+        name: 'Saved Messages',
+        username: '',
+        type: 'private',
+        avatarDataUrl: ''
       });
 
       return filteredChats;
@@ -1083,6 +1104,146 @@ async function getChatsInternal() {
 
 function getChats() {
   return trackTelegramOperation('getChats', getChatsInternal);
+}
+
+async function getChatAvatarInternal(chatId) {
+  if (!client) await connectTelegram();
+  const entity = await telegramRequest(() => client.getEntity(chatId));
+  return getChatAvatarDataUrl(entity);
+}
+
+function getChatAvatar(chatId) {
+  return trackTelegramOperation('getChatAvatar', () => getChatAvatarInternal(chatId));
+}
+
+function toPreviewNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+async function getPreviewMedia(message) {
+  const file = message.file;
+  const media = message.photo
+    ? { kind: 'photo' }
+    : message.video
+      ? { kind: 'video' }
+      : message.audio
+        ? { kind: 'audio' }
+        : message.document
+          ? { kind: 'document' }
+          : null;
+
+  if (!media) return undefined;
+
+  const result = {
+    ...media,
+    name: file?.name || '',
+    mimeType: file?.mimeType || '',
+    size: toPreviewNumber(file?.size),
+    duration: toPreviewNumber(file?.duration),
+    width: toPreviewNumber(file?.width),
+    height: toPreviewNumber(file?.height)
+  };
+
+  if (media.kind === 'photo' || media.kind === 'video') {
+    try {
+      const thumbnail = await message.downloadMedia({ thumb: 1 });
+
+      if (thumbnail && (Buffer.isBuffer(thumbnail) || thumbnail instanceof Uint8Array)) {
+        const mimeType = media.kind === 'photo' ? 'image/jpeg' : 'video/jpeg';
+        result.thumbnailDataUrl = `data:${mimeType};base64,${Buffer.from(thumbnail).toString('base64')}`;
+      }
+    } catch (error) {
+      console.error('Telegram media thumbnail unavailable:', error?.code || error?.name || 'unknown');
+    }
+  }
+
+  if (media.kind === 'audio' && result.size && result.size <= 10 * 1024 * 1024) {
+    try {
+      const audio = await message.downloadMedia();
+
+      if (audio && (Buffer.isBuffer(audio) || audio instanceof Uint8Array)) {
+        result.dataUrl = `data:${result.mimeType || 'audio/mpeg'};base64,${Buffer.from(audio).toString('base64')}`;
+      }
+    } catch (error) {
+      console.error('Telegram audio preview unavailable:', error?.code || error?.name || 'unknown');
+    }
+  }
+
+  return result;
+}
+
+async function getChatHistoryInternal(chatId, limit = 50) {
+  if (!client) {
+    await connectTelegram();
+  }
+
+  const target = chatId === 'me' ? 'me' : chatId;
+  const entity = await telegramRequest(() => withTimeout(
+    client.getEntity(target),
+    REQUEST_TIMEOUT,
+    'Resolving Telegram chat for history'
+  ));
+  const messages = await telegramRequest(() => withTimeout(
+    client.getMessages(entity, { limit }),
+    REQUEST_TIMEOUT,
+    'Loading Telegram chat history'
+  ));
+
+  let avatarDataUrl = '';
+
+  try {
+    const avatar = await telegramRequest(() => withTimeout(
+      client.downloadProfilePhoto(entity),
+      REQUEST_TIMEOUT,
+      'Loading Telegram chat avatar'
+    ));
+
+    if (avatar && (Buffer.isBuffer(avatar) || avatar instanceof Uint8Array)) {
+      avatarDataUrl = `data:image/jpeg;base64,${Buffer.from(avatar).toString('base64')}`;
+    }
+  } catch (error) {
+    console.error('Telegram chat avatar unavailable:', error?.code || error?.name || 'unknown');
+  }
+
+  const normalizedMessages = (await Promise.all([...(messages || [])]
+    .filter((message) => message && message.id !== undefined)
+    .map(async (message) => {
+      const rawDate = message.date instanceof Date
+        ? message.date
+        : new Date(Number(message.date || 0) * 1000);
+
+      return {
+        id: String(message.id),
+        text: String(message.message || message.text || ''),
+        date: Number.isNaN(rawDate.getTime()) ? new Date(0).toISOString() : rawDate.toISOString(),
+        outgoing: message.out === true,
+        senderName: getEntityDisplayName(message.sender),
+        mediaType: message.media?.className || '',
+        mediaName: message.file?.name || '',
+        media: await getPreviewMedia(message),
+        groupId: message.groupedId ? String(message.groupedId) : ''
+      };
+    })))
+    .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime());
+
+  return {
+    chat: {
+      id: String(entity.id || chatId),
+      title: getEntityDisplayName(entity),
+      username: entity.username || '',
+      type: getPublicChatType(entity) || 'private',
+      avatarDataUrl,
+      topic: ''
+    },
+    messages: normalizedMessages
+  };
+}
+
+function getChatHistory(chatId, limit) {
+  return trackTelegramOperation('getChatHistory', () =>
+    getChatHistoryInternal(chatId, limit)
+  );
 }
 
 // =========================================================
@@ -1171,6 +1332,113 @@ function normalizePhone(value) {
 
   return String(value || '')
     .replace(/\D/g, '');
+}
+
+function getPublicChatType(entity) {
+  if (!entity) {
+    return null;
+  }
+
+  if (entity instanceof Api.User || entity?.className === 'User') {
+    return null;
+  }
+
+  if (entity instanceof Api.Channel || entity?.className === 'Channel') {
+    return entity.megagroup ? 'supergroup' : 'channel';
+  }
+
+  if (entity instanceof Api.Chat || entity?.className === 'Chat') {
+    return 'group';
+  }
+
+  if (entity instanceof Api.ChatForbidden || entity?.className === 'ChatForbidden') {
+    return 'group';
+  }
+
+  return null;
+}
+
+function getEntityDisplayName(entity) {
+  if (!entity) {
+    return '';
+  }
+
+  return (
+    entity.title ||
+    [entity.firstName, entity.lastName].filter(Boolean).join(' ') ||
+    entity.username ||
+    'Unnamed chat'
+  );
+}
+
+async function resolveChatByTitleInDialogs(query) {
+  const normalized = normalizeQuery(query);
+
+  if (!normalized) {
+    return null;
+  }
+
+  let me = null;
+
+  try {
+    me = await telegramRequest(() => client.getMe());
+  } catch (error) {
+    if (error?.code === 'TELEGRAM_SESSION_INVALID') {
+      throw error;
+    }
+
+    console.error('Could not load Telegram profile for dialog title lookup:', error?.code || error?.name || 'unknown');
+  }
+
+  const myId = me?.id?.toString();
+
+  try {
+    const dialogs = await telegramRequest(() => withTimeout(
+      client.getDialogs({
+        limit: 200
+      }),
+      REQUEST_TIMEOUT,
+      'Telegram dialog title lookup'
+    ));
+
+    for (const dialog of dialogs || []) {
+      const entity = dialog?.entity || null;
+
+      if (!entity) {
+        continue;
+      }
+
+      const publicType = getPublicChatType(entity);
+
+      if (!publicType) {
+        continue;
+      }
+
+      if (myId && entity.id?.toString() === myId) {
+        continue;
+      }
+
+      const name = getEntityDisplayName(entity);
+
+      if (normalizeQuery(name) === normalized) {
+        return {
+          id: entity.id?.toString(),
+          name,
+          username: entity.username || '',
+          phone: entity.phone || '',
+          type: publicType
+        };
+      }
+    }
+  } catch (error) {
+    if (error?.code === 'TELEGRAM_SESSION_INVALID') {
+      throw error;
+    }
+
+    console.error('Telegram dialog title lookup failed:', error?.code || error?.name || 'unknown');
+  }
+
+  return null;
 }
 
 // =========================================================
@@ -1388,7 +1656,17 @@ async function resolveChatInternal(query) {
   }
 
   // =======================================================
-  // 7. DIRECT TELEGRAM SEARCH
+  // 7. DIALOG ENTITY SEARCH BY TITLE
+  // =======================================================
+
+  const dialogMatch = await resolveChatByTitleInDialogs(originalQuery);
+
+  if (dialogMatch) {
+    return dialogMatch;
+  }
+
+  // =======================================================
+  // 8. DIRECT TELEGRAM SEARCH
   // =======================================================
 
   try {
@@ -1409,16 +1687,18 @@ async function resolveChatInternal(query) {
       );
     }
 
+    const type = getPublicChatType(entity);
+
+    if (!type) {
+      throw new Error(
+        'Resolved Telegram entity is not a public group, supergroup or channel'
+      );
+    }
+
     const name =
-      entity.title ||
-      [
-        entity.firstName,
-        entity.lastName
-      ]
-        .filter(Boolean)
-        .join(' ') ||
-      entity.username ||
-      'Unnamed chat';
+      getEntityDisplayName(entity);
+
+    const avatarDataUrl = await getChatAvatarDataUrl(entity);
 
     return {
 
@@ -1431,7 +1711,10 @@ async function resolveChatInternal(query) {
         entity.username || '',
 
       phone:
-        entity.phone || ''
+        entity.phone || '',
+
+      type,
+      avatarDataUrl
 
     };
 
@@ -1458,9 +1741,25 @@ function resolveChat(query) {
 // SEND MESSAGE
 // =========================================================
 
+function toTelegramFormattingEntities(entities = []) {
+  return entities.map((entity) => {
+    const range = { offset: entity.offset, length: entity.length };
+    switch (entity.type) {
+      case 'bold': return new Api.MessageEntityBold(range);
+      case 'italic': return new Api.MessageEntityItalic(range);
+      case 'underline': return new Api.MessageEntityUnderline(range);
+      case 'strikethrough': return new Api.MessageEntityStrike(range);
+      case 'text_url': return new Api.MessageEntityTextUrl({ ...range, url: entity.url });
+      default: throw new Error('Unsupported formatting entity.');
+    }
+  });
+}
+
 async function sendMessageInternal(
   chatId,
-  message
+  message,
+  attachments = [],
+  entities = []
 ) {
 
   if (!client) {
@@ -1476,13 +1775,18 @@ async function sendMessageInternal(
 
   try {
 
+    const sendOptions = { message };
+
+    if (entities.length > 0) {
+      sendOptions.formattingEntities = toTelegramFormattingEntities(entities);
+    }
+
+    if (attachments.length > 0) {
+      sendOptions.file = attachments.length === 1 ? attachments[0] : attachments;
+    }
+
     await telegramRequest(() => withTimeout(
-        clientAtStart.sendMessage(
-          target,
-          {
-            message
-          }
-        ),
+        clientAtStart.sendMessage(target, sendOptions),
         REQUEST_TIMEOUT,
         'Sending Telegram message'
       ));
@@ -1501,8 +1805,8 @@ async function sendMessageInternal(
   }
 }
 
-function sendMessage(chatId, message) {
-  return trackTelegramOperation('send', () => sendMessageInternal(chatId, message));
+function sendMessage(chatId, message, attachments, entities) {
+  return trackTelegramOperation('send', () => sendMessageInternal(chatId, message, attachments, entities));
 }
 
 // =========================================================
@@ -1514,7 +1818,9 @@ async function scheduleMessageInternal(
   message,
   date,
   time,
-  targetTimestamp
+  targetTimestamp,
+  attachments = [],
+  entities = []
 ) {
 
   if (!client) {
@@ -1568,14 +1874,21 @@ async function scheduleMessageInternal(
     };
   }
 
+  const sendOptions = {
+    message,
+    schedule: scheduledDate
+  };
+
+  if (entities.length > 0) {
+    sendOptions.formattingEntities = toTelegramFormattingEntities(entities);
+  }
+
+  if (attachments.length > 0) {
+    sendOptions.file = attachments.length === 1 ? attachments[0] : attachments;
+  }
+
   const sendResult = await telegramRequest(() => withTimeout(
-    client.sendMessage(
-      target,
-      {
-        message,
-        schedule: scheduledDate
-      }
-    ),
+    client.sendMessage(target, sendOptions),
     REQUEST_TIMEOUT,
     'Scheduling Telegram message'
   ));
@@ -1662,13 +1975,15 @@ async function scheduleMessageInternal(
   };
 }
 
-function scheduleMessage(chatId, message, date, time, targetTimestamp) {
+function scheduleMessage(chatId, message, date, time, targetTimestamp, attachments, entities) {
   return trackTelegramOperation('schedule', () => scheduleMessageInternal(
     chatId,
     message,
     date,
     time,
-    targetTimestamp
+    targetTimestamp,
+    attachments,
+    entities
   ));
 }
 
@@ -1791,6 +2106,8 @@ function cancelScheduledMessage(chatId, messageId, message, date, time) {
     loginUser,
     connectTelegram,
     getChats,
+    getChatAvatar,
+    getChatHistory,
     getContacts,
     resolveChat,
     sendMessage,
@@ -1815,6 +2132,8 @@ module.exports = {
   loginUser: (...args) => defaultCore.loginUser(...args),
   connectTelegram: (...args) => defaultCore.connectTelegram(...args),
   getChats: (...args) => defaultCore.getChats(...args),
+  getChatAvatar: (...args) => defaultCore.getChatAvatar(...args),
+  getChatHistory: (...args) => defaultCore.getChatHistory(...args),
   getContacts: (...args) => defaultCore.getContacts(...args),
   resolveChat: (...args) => defaultCore.resolveChat(...args),
   sendMessage: (...args) => defaultCore.sendMessage(...args),

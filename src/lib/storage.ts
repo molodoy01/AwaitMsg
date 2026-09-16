@@ -1,9 +1,10 @@
-import type { ScheduledMessage } from '@/types';
+import type { ScheduledMessage, Template } from '@/types';
 
 const UPCOMING_KEY = 'awaitmsg_upcoming';
 const SENT_KEY = 'awaitmsg_sent';
 const HIDDEN_CHATS_KEY = 'awaitmsg_hidden_chats';
 const CHATS_KEY = 'awaitmsg_chats';
+const TEMPLATES_KEY = 'awaitmsg_templates';
 
 export function load<T>(key: string, fallback: T): T {
   try {
@@ -52,4 +53,30 @@ export function loadChats(): { id: string; name: string }[] {
 
 export function saveChats(chats: { id: string; name: string }[]): void {
   save(CHATS_KEY, chats);
+}
+
+function isTemplate(value: unknown): value is Template {
+  if (!value || typeof value !== 'object') return false;
+
+  const template = value as Partial<Template>;
+
+  return (
+    typeof template.id === 'string' &&
+    typeof template.name === 'string' &&
+    typeof template.body === 'string' &&
+    typeof template.createdAt === 'string' &&
+    typeof template.updatedAt === 'string'
+  );
+}
+
+export function loadTemplates(): Template[] {
+  const stored = load<unknown>(TEMPLATES_KEY, []);
+
+  if (!Array.isArray(stored)) return [];
+
+  return stored.filter(isTemplate);
+}
+
+export function saveTemplates(templates: Template[]): void {
+  save(TEMPLATES_KEY, templates);
 }

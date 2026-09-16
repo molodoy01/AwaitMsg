@@ -17,6 +17,7 @@ const {
   validateEnabled,
   validateGeminiGeneratePayload,
   validateGeminiKey,
+  validateHistoryPayload,
   validateLoginPayload,
   validateQuery,
   validateSchedulePayload,
@@ -164,6 +165,8 @@ const {
   forgetTelegramAccount,
   clearTelegramSession,
   getChats,
+  getChatAvatar,
+  getChatHistory,
   getContacts,
   resolveChat,
   sendMessage,
@@ -495,6 +498,41 @@ ipcMain.handle('telegram-chats', async (event) => {
   }
 });
 
+ipcMain.handle('telegram-chat-avatar', async (event, chatId) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validatedChatId = validateChatId(chatId);
+
+  try {
+    return { success: true, avatarDataUrl: await getChatAvatar(validatedChatId) };
+  } catch (error) {
+    console.error('Telegram chat avatar error:', error?.code || error?.name || 'unknown');
+    return { success: false, avatarDataUrl: '', error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-chat-history', async (event, data = {}) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validated = validateHistoryPayload(data);
+
+  try {
+    return {
+      success: true,
+      history: await getChatHistory(validated.chatId, validated.limit)
+    };
+  } catch (error) {
+    console.error('Telegram chat history error:', error?.code || error?.name || 'unknown');
+    return { success: false, error: error.message };
+  }
+});
+
 // -------------------------
 // Telegram contacts
 // -------------------------
@@ -570,7 +608,9 @@ ipcMain.handle('telegram-send', async (event, data) => {
   try {
     await sendMessage(
       validated.chatId,
-      validated.message
+      validated.message,
+      validated.attachments,
+      validated.entities
     );
 
     return {
@@ -606,7 +646,9 @@ ipcMain.handle('telegram-schedule', async (event, data) => {
       validated.message,
       undefined,
       undefined,
-      validated.targetTimestamp
+      validated.targetTimestamp,
+      validated.attachments,
+      validated.entities
     );
 
     return {
