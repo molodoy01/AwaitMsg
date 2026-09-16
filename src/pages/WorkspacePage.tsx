@@ -1,11 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
+import { ChatPreviewStand } from '@/components/ChatPreviewStand';
 import { Notification } from '@/components/Notification';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { WorkspaceTextStage } from '@/components/WorkspaceTextStage';
 import { createTemplate, deleteTemplate, insertTextAtSelection, updateTemplate } from '@/lib/templates';
-import { normalizeRichTextEntities, richTextToHtml } from '@/lib/richText';
+import { normalizeRichTextEntities } from '@/lib/richText';
+import { toInlineKeyboardMarkup } from '@/lib/inlineKeyboard';
+import type { InlineButtonRow } from '@/lib/inlineKeyboard';
 import { loadTemplates, saveTemplates } from '@/lib/storage';
 import type { ScheduleRepeatOptions } from '@/lib/scheduling';
 import type {
@@ -44,8 +47,9 @@ type WorkspacePageProps = {
     time: string;
     attachments?: string[];
     entities?: RichTextEntity[];
+    replyMarkup?: ReturnType<typeof toInlineKeyboardMarkup>;
   }, repeat?: ScheduleRepeatOptions) => void;
-  handleSendDraftNow: (chat: Chat, text: string, attachments?: string[], entities?: RichTextEntity[]) => Promise<void>;
+  handleSendDraftNow: (chat: Chat, text: string, attachments?: string[], entities?: RichTextEntity[], replyMarkup?: ReturnType<typeof toInlineKeyboardMarkup>) => Promise<void>;
   publishingDraft: boolean;
   handleCancelMessage: (message: ScheduledMessage) => void;
 };
@@ -55,6 +59,7 @@ type WorkspaceDraft = {
   entities?: RichTextEntity[];
   attachments: WorkspaceAttachment[];
   savedAt: string;
+  inlineButtons?: InlineButtonRow[];
 };
 
 type WorkspaceAttachment = {
@@ -124,20 +129,6 @@ function toFileUrl(filePath: string) {
   return `file:///${encodedPath}`;
 }
 
-function formatPreviewBytes(size?: number) {
-  if (!size || size < 1) return '';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatPreviewDuration(duration?: number) {
-  if (!duration || duration < 1) return '';
-  const minutes = Math.floor(duration / 60);
-  const seconds = Math.floor(duration % 60).toString().padStart(2, '0');
-  return `${minutes}:${seconds}`;
-}
-
 export function WorkspacePage({
   connected,
   chats,
@@ -164,7 +155,7 @@ export function WorkspacePage({
   handleCancelMessage,
 }: WorkspacePageProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const bodyInputRef = useRef<HTMLDivElement | null>(null);
   const previewFeedRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const initialPreviewLayoutRef = useRef<PreviewLayout | null>(null);
@@ -195,11 +186,15 @@ export function WorkspacePage({
   const [attachments, setAttachments] = useState<WorkspaceAttachment[]>(
     () => normalizeAttachments(initialDraftRef.current?.attachments),
   );
+  const [inlineButtons, setInlineButtons] = useState<InlineButtonRow[]>(
+    () => initialDraftRef.current?.inlineButtons ?? [],
+  );
   const [templates, setTemplates] = useState<Template[]>(() => loadTemplates());
   const [savedAt, setSavedAt] = useState(
     () => initialDraftRef.current?.savedAt ?? 'Not saved',
   );
-  const [stageMode, setStageMode] = useState<'editor' | 'schedule' | 'template' | 'chat'>('editor');
+  const [stageMode, setStageMode] = useState<'editor' | 'schedule' | 'template' | 'chat' | 'buttons'>('editor');
+  const [activeTab, setActiveTab] = useState<'editor' | 'templates' | 'buttons'>('editor');
   const [workspaceSelectedChats, setWorkspaceSelectedChats] = useState<Chat[]>([]);
   const workspaceChatOriginRef = useRef<Chat | null>(null);
   const [repeatMode, setRepeatMode] = useState<ScheduleRepeatOptions['mode']>('none');
@@ -238,8 +233,8 @@ export function WorkspacePage({
     });
   };
 
-  const togglePreviewCollapsed = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
+  const togglePreviewCollapsed = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    event?.stopPropagation();
     setPreviewLayout((current) => ({ ...current, collapsed: !current.collapsed }));
   };
 
@@ -254,6 +249,7 @@ export function WorkspacePage({
           setWorkspaceSelectedChats([]);
         }
         setStageMode('editor');
+        setActiveTab('editor');
         setTemplateEditingId(null);
         setTemplateDraftName('');
         setTemplateDraftBody('');
@@ -283,6 +279,7 @@ export function WorkspacePage({
       body: draftBody,
       entities: draftEntities,
       attachments,
+      inlineButtons,
       savedAt: new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -291,13 +288,14 @@ export function WorkspacePage({
 
     window.localStorage.setItem(WORKSPACE_DRAFT_KEY, JSON.stringify(draft));
     setSavedAt(draft.savedAt);
-  }, [draftBody, draftEntities, attachments]);
+  }, [draftBody, draftEntities, attachments, inlineButtons]);
 
   useEffect(() => {
     if (successPulse) {
       setDraftBody('');
       setDraftEntities([]);
       setAttachments([]);
+      setInlineButtons([]);
     }
   }, [successPulse]);
 
@@ -349,14 +347,6 @@ export function WorkspacePage({
   }, [previewHistory?.chat.id, previewHistory?.messages.length, previewHistoryLoading]);
 
   const previewText = stageMode === 'template' && templateEditingId ? templateDraftBody : draftBody;
-  const previewBody = previewText.trim() || 'Your draft preview will appear here.';
-  const hasPreviewText = Boolean(previewText.trim());
-  const imageAttachments = attachments.filter(
-    (attachment) => isImageAttachment(attachment) && attachment.path,
-  );
-  const documentAttachments = attachments.filter(
-    (attachment) => !isImageAttachment(attachment) || !attachment.path,
-  );
   const previewTime = new Date().toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -379,155 +369,53 @@ export function WorkspacePage({
 
     return `${summaryDate} · ${summaryTime}`;
   })();
-  const previewChatTitle = previewHistory?.chat.title || selectedChat?.name || 'Select a chat';
-  const previewChatType = previewHistory?.chat.topic
-    || (previewHistory?.chat.username ? `@${previewHistory.chat.username}` : '')
-    || previewHistory?.chat.type
-    || selectedChat?.type
-    || 'Chat';
-  const previewHistoryGroups = (() => {
-    const groups: {
-      key: string;
-      groupId?: string;
-      messages: PreviewChatHistory['messages'];
-    }[] = [];
-
-    for (const message of previewHistory?.messages ?? []) {
-      const previous = groups[groups.length - 1];
-      const groupHasMedia = previous?.messages.some((item) => item.media) ?? false;
-      if (
-        message.groupId &&
-        previous?.groupId === message.groupId &&
-        (Boolean(message.media) || groupHasMedia)
-      ) {
-        previous.messages.push(message);
-      } else {
-        groups.push({
-          key: message.media ? message.groupId || message.id : message.id,
-          groupId: message.groupId,
-          messages: [message],
-        });
-      }
-    }
-
-    return groups;
-  })();
-
-  const renderHistoryMedia = (message: PreviewChatHistory['messages'][number]) => {
-    const media = message.media;
-    if (!media) return null;
-
-    if (media.kind === 'photo') {
-      return media.thumbnailDataUrl ? (
-        <img
-          src={media.thumbnailDataUrl}
-          alt={media.name || 'Telegram photo'}
-          className="workspace-page-preview-history-image"
-        />
-      ) : (
-        <div className="workspace-page-preview-history-placeholder">Photo preview unavailable</div>
-      );
-    }
-
-    if (media.kind === 'video') {
-      return (
-        <div className="workspace-page-preview-history-video">
-          {media.thumbnailDataUrl ? (
-            <img
-              src={media.thumbnailDataUrl}
-              alt={media.name || 'Telegram video'}
-              className="workspace-page-preview-history-image"
-            />
-          ) : (
-            <div className="workspace-page-preview-history-placeholder">Video preview unavailable</div>
-          )}
-          <span className="workspace-page-preview-history-play">▶</span>
-          {media.duration ? <span className="workspace-page-preview-history-duration">{formatPreviewDuration(media.duration)}</span> : null}
-        </div>
-      );
-    }
-
-    if (media.kind === 'audio') {
-      return (
-        <div className="workspace-page-preview-history-audio">
-          <div className="workspace-page-preview-history-audio-copy">
-            <strong>{media.name || 'Audio message'}</strong>
-            <span>{formatPreviewDuration(media.duration) || 'Audio preview unavailable'}</span>
-          </div>
-          {media.dataUrl ? (
-            <audio controls preload="metadata" src={media.dataUrl} />
-          ) : (
-            <span className="workspace-page-preview-history-play">▶</span>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="workspace-page-preview-history-document">
-        <span className="workspace-page-preview-file-mark">FILE</span>
-        <div className="workspace-page-preview-history-document-copy">
-          <strong>{media.name || message.mediaName || 'Document'}</strong>
-          <span>{[media.mimeType, formatPreviewBytes(media.size)].filter(Boolean).join(' · ') || 'Document'}</span>
-        </div>
-      </div>
-    );
-  };
   const scheduledForCurrentChat = [...upcoming]
     .filter((msg) => msg.chatId === (selectedChat?.id ?? ''))
     .sort((left, right) => new Date(left.when).getTime() - new Date(right.when).getTime())[0] ?? null;
   const canSchedule = Boolean(selectedChat) && Boolean(draftBody.trim()) && !scheduling;
 
   const insertTextAtCursor = (insertedText: string) => {
-    const textarea = bodyInputRef.current;
-
-    const selection = window.getSelection();
-    const selectionNode = selection?.anchorNode;
-    const selectionEditor = selectionNode instanceof HTMLElement
-      ? selectionNode.closest('[contenteditable="true"]')
-      : selectionNode?.parentElement?.closest('[contenteditable="true"]');
-
-    if (!textarea && selectionEditor) {
-      document.execCommand('insertText', false, insertedText);
-      return;
-    }
-
-    if (!textarea) {
-      const { body: nextValue } = insertTextAtSelection(
-        draftBody,
-        insertedText,
-        draftBody.length,
-        draftBody.length,
-      );
-      setDraftBody(nextValue);
-      setDraftEntities([]);
-      return;
-    }
-
-    const selectionStart = textarea.selectionStart ?? draftBody.length;
-    const selectionEnd = textarea.selectionEnd ?? draftBody.length;
-
-    textarea.focus();
-    textarea.setSelectionRange(selectionStart, selectionEnd);
-
-    const supportsNativeInsert =
-      typeof document.queryCommandSupported === 'function' &&
-      document.queryCommandSupported('insertText');
-
-    if (supportsNativeInsert && document.execCommand('insertText', false, insertedText)) {
-      return;
-    }
-
+    const editor = bodyInputRef.current;
+    const selectionStart = Number(editor?.dataset.selectionStart);
+    const selectionEnd = Number(editor?.dataset.selectionEnd);
+    const hasSelection = Number.isFinite(selectionStart) && Number.isFinite(selectionEnd);
+    const start = hasSelection ? selectionStart : draftBody.length;
+    const end = hasSelection ? selectionEnd : draftBody.length;
     const { body: nextValue, caretPosition } = insertTextAtSelection(
       draftBody,
       insertedText,
-      selectionStart,
-      selectionEnd,
+      start,
+      end,
     );
 
     setDraftBody(nextValue);
-    textarea.selectionStart = caretPosition;
-    textarea.selectionEnd = caretPosition;
+    setDraftEntities([]);
+
+    if (!editor) return;
+
+    editor.dataset.selectionStart = String(caretPosition);
+    editor.dataset.selectionEnd = String(caretPosition);
+    setTimeout(() => {
+      editor.focus();
+      const range = editor.ownerDocument.createRange();
+      const walker = editor.ownerDocument.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      let remaining = caretPosition;
+      let node = walker.nextNode();
+
+      while (node) {
+        const length = node.textContent?.length ?? 0;
+        if (remaining <= length) {
+          range.setStart(node, remaining);
+          range.collapse(true);
+          const selection = editor.ownerDocument.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          break;
+        }
+        remaining -= length;
+        node = walker.nextNode();
+      }
+    }, 0);
   };
 
   const handleCreateTemplate = (input: Pick<Template, 'name' | 'body'>) => {
@@ -582,6 +470,7 @@ export function WorkspacePage({
     workspaceChatOriginRef.current = null;
     setWorkspaceSelectedChats([]);
     setStageMode('editor');
+    setActiveTab('editor');
   };
 
   const completeChatSelection = () => {
@@ -592,13 +481,14 @@ export function WorkspacePage({
     setStageMode('editor');
   };
 
-  const changeStageMode = (nextMode: 'editor' | 'schedule' | 'template' | 'chat') => {
+  const changeStageMode = (nextMode: 'editor' | 'schedule' | 'template' | 'chat' | 'buttons') => {
     if (stageMode === 'chat' && nextMode !== 'chat') {
       setSelectedChat(workspaceChatOriginRef.current);
       workspaceChatOriginRef.current = null;
       setWorkspaceSelectedChats([]);
     }
     if (nextMode !== 'template') closeTemplateEditor();
+    setActiveTab(nextMode === 'template' ? 'templates' : nextMode === 'buttons' ? 'buttons' : 'editor');
     setStageMode(nextMode);
   };
 
@@ -660,7 +550,7 @@ export function WorkspacePage({
           <section className="workspace-page-panel workspace-page-editor-panel">
                 <div className="workspace-page-editor-heading">
                   <div className="workspace-page-editor-title">
-                    <span>Create Post</span>
+                    <span className="workspace-page-editor-title-text">Create Post</span>
                   </div>
                 </div>
 
@@ -687,6 +577,7 @@ export function WorkspacePage({
 
                 <div className="workspace-page-form-row workspace-page-form-row-body">
                   <RichTextEditor
+                    inputRef={bodyInputRef}
                     text={draftBody}
                     entities={draftEntities}
                     stageMode={stageMode}
@@ -723,6 +614,7 @@ export function WorkspacePage({
                             time,
                             entities,
                             attachments: attachments.map((attachment) => attachment.path).filter(Boolean),
+                            replyMarkup: toInlineKeyboardMarkup(inlineButtons),
                           }, repeat);
                           setStageMode('editor');
                         }}
@@ -743,6 +635,8 @@ export function WorkspacePage({
                         onDeleteTemplate={handleDeleteTemplate}
                         closeTemplateEditor={closeTemplateEditor}
                         saveTemplateStage={saveTemplateStage}
+                        inlineButtons={inlineButtons}
+                        setInlineButtons={setInlineButtons}
                       />
                     )}
                   />
@@ -825,6 +719,7 @@ export function WorkspacePage({
                     onClick={() => {
                       if (stageMode === 'template') {
                         closeTemplateEditor();
+                        setActiveTab('editor');
                         setStageMode('editor');
                       } else {
                         changeStageMode('template');
@@ -833,6 +728,14 @@ export function WorkspacePage({
                     aria-pressed={stageMode === 'template'}
                   >
                     Templates
+                  </button>
+                  <button
+                    type="button"
+                    className={`workspace-page-mode-button ${activeTab === 'buttons' ? 'is-active' : ''}`}
+                    onClick={() => changeStageMode(stageMode === 'buttons' ? 'editor' : 'buttons')}
+                    aria-pressed={activeTab === 'buttons'}
+                  >
+                    🔘 BUTTONS
                   </button>
                 </div>
 
@@ -858,6 +761,7 @@ export function WorkspacePage({
                         draftBody,
                         attachments.map((attachment) => attachment.path).filter(Boolean),
                         draftEntities,
+                        toInlineKeyboardMarkup(inlineButtons),
                       );
                     }}
                     disabled={!selectedChat || !draftBody.trim() || publishingDraft || scheduling}
@@ -879,6 +783,7 @@ export function WorkspacePage({
                         attachments: attachments
                           .map((attachment) => attachment.path)
                           .filter(Boolean),
+                        replyMarkup: toInlineKeyboardMarkup(inlineButtons),
                       }, {
                         mode: repeatMode,
                         days: repeatDays,
@@ -924,184 +829,21 @@ export function WorkspacePage({
             data-collapsed={previewCollapsed ? 'true' : 'false'}
             data-visible={previewLayout.visible === false ? 'false' : 'true'}
           >
-            <div className="workspace-page-preview-header">
-              <div className="workspace-page-panel-label" aria-label="Preview header" />
-            </div>
-
-            <div className="workspace-page-preview-shell">
-              <div className="workspace-page-chat-header">
-                <span>{selectedChat ? selectedChat.name : 'Select a chat'}</span>
-              </div>
-
-              <div className="workspace-page-preview-feed">
-                <div className="workspace-page-draft-preview">
-                  {hasPreviewText ? (
-                    <span dangerouslySetInnerHTML={{ __html: richTextToHtml(previewText, stageMode === 'template' && templateEditingId ? [] : draftEntities) }} />
-                  ) : (
-                    previewBody
-                  )}
-                </div>
-                {attachments.length > 0 && (
-                  <div className="workspace-page-preview-attachments">
-                    {attachments.map((attachment, index) => (
-                      <div
-                        key={`${attachment.name}-${index}`}
-                        className="workspace-page-preview-attachment"
-                      >
-                        {attachment.name}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="workspace-page-preview-shell-desktop">
-              <div
-                className="workspace-page-preview-chat-header"
-              >
-                {previewHistory?.chat.avatarDataUrl ? (
-                  <img
-                    src={previewHistory.chat.avatarDataUrl}
-                    alt=""
-                    className="workspace-page-preview-avatar"
-                  />
-                ) : (
-                  <div className="workspace-page-preview-avatar">
-                    {previewChatTitle.slice(0, 1).toUpperCase()}
-                  </div>
-                )}
-                <div className="workspace-page-preview-chat-copy">
-                  <div className="workspace-page-preview-chat-name">
-                    {previewChatTitle}
-                  </div>
-                  <div className="workspace-page-preview-chat-state">
-                    {previewChatType}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="workspace-page-preview-collapse"
-                  onClick={togglePreviewCollapsed}
-                  aria-label={previewCollapsed ? 'Expand preview' : 'Collapse preview'}
-                >
-                  {previewCollapsed ? '+' : '−'}
-                </button>
-              </div>
-
-              <div className="workspace-page-preview-feed-desktop" ref={previewFeedRef}>
-                {previewHistoryLoading && (
-                  <div className="workspace-page-preview-loading" aria-live="polite">
-                    Loading history…
-                  </div>
-                )}
-
-                {!previewHistoryLoading && previewHistoryError && (
-                  <div className="workspace-page-preview-error" role="alert">
-                    <span>{previewHistoryError}</span>
-                    <button type="button" onClick={() => setPreviewHistoryRetry((value) => value + 1)}>
-                      Retry
-                    </button>
-                  </div>
-                )}
-
-                {previewHistoryGroups.map((group) => {
-                  const firstMessage = group.messages[0];
-                  const hasMedia = group.messages.some((message) => message.media);
-                  const caption = group.messages.find((message) => message.text)?.text;
-
-                  return (
-                    <article
-                      className={`workspace-page-preview-bubble workspace-page-preview-history-bubble ${hasMedia ? '' : 'workspace-page-preview-text-only'} ${firstMessage.outgoing ? 'is-outgoing' : 'is-incoming'}`}
-                      key={group.key}
-                    >
-                      {hasMedia && (
-                        <div className={`workspace-page-preview-history-media ${group.messages.length > 1 ? 'is-album' : ''}`}>
-                          {group.messages.map((message) => (
-                            <div className="workspace-page-preview-history-media-item" key={message.id}>
-                              {renderHistoryMedia(message)}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {firstMessage.senderName && !firstMessage.outgoing && (
-                        <div className="workspace-page-preview-message">
-                          {firstMessage.senderName}
-                        </div>
-                      )}
-                      {hasMedia
-                        ? caption && <div className="workspace-page-preview-message">{caption}</div>
-                        : group.messages
-                          .filter((message) => message.text)
-                          .map((message) => (
-                            <div className="workspace-page-preview-message" key={message.id}>
-                              {message.text}
-                            </div>
-                          ))}
-                      <div className="workspace-page-preview-meta">
-                        <span>{new Date(firstMessage.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    </article>
-                  );
-                })}
-
-                {hasPreviewText || attachments.length > 0 ? (
-                  <article className="workspace-page-preview-bubble workspace-page-preview-draft-bubble">
-                    {imageAttachments.length > 0 && (
-                      <div
-                        className={`workspace-page-preview-media ${imageAttachments.length > 1 ? 'is-album' : 'is-single'}`}
-                      >
-                        {imageAttachments.map((attachment, index) => (
-                          <div
-                            key={`${attachment.name}-${index}`}
-                            className="workspace-page-preview-media-item is-image"
-                          >
-                            <img
-                              src={toFileUrl(attachment.path)}
-                              alt={attachment.name}
-                              className="workspace-page-preview-image"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {documentAttachments.length > 0 && (
-                      <div className="workspace-page-preview-documents">
-                        {documentAttachments.map((attachment, index) => (
-                          <div
-                            key={`${attachment.name}-${index}`}
-                            className="workspace-page-preview-media-item is-file"
-                          >
-                            <div className="workspace-page-preview-file">
-                              <span className="workspace-page-preview-file-mark">FILE</span>
-                              <span className="workspace-page-preview-file-name">
-                                {attachment.name}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {hasPreviewText && (
-                      <div className={`workspace-page-preview-message ${attachments.length > 0 ? 'is-caption' : ''}`}>
-                        <span dangerouslySetInnerHTML={{ __html: richTextToHtml(previewText, stageMode === 'template' && templateEditingId ? [] : draftEntities) }} />
-                      </div>
-                    )}
-
-                    <div className="workspace-page-preview-meta">
-                      <span>{previewTime}</span>
-                      <span className="workspace-page-preview-status">✓✓</span>
-                    </div>
-                  </article>
-                ) : (
-                  <div className="workspace-page-preview-empty-chat">
-                    No messages yet
-                  </div>
-                )}
-              </div>
-            </div>
+            <ChatPreviewStand
+              selectedChat={selectedChat}
+              previewHistory={previewHistory}
+              previewHistoryLoading={previewHistoryLoading}
+              previewHistoryError={previewHistoryError}
+              previewHistoryRetry={() => setPreviewHistoryRetry((value) => value + 1)}
+              previewFeedRef={previewFeedRef}
+              draftText={previewText}
+              draftEntities={stageMode === 'template' && templateEditingId ? [] : draftEntities}
+              inlineButtons={inlineButtons}
+              attachments={attachments}
+              previewTime={previewTime}
+              collapsed={previewCollapsed}
+              onToggleCollapsed={togglePreviewCollapsed}
+            />
           </section>
         </main>
       </div>

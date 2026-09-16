@@ -8,6 +8,10 @@ const MAX_CODE_LENGTH = 32;
 const MAX_ATTACHMENT_PATH_LENGTH = 4096;
 const MAX_ATTACHMENTS = 10;
 const MAX_FORMATTING_ENTITIES = 100;
+const MAX_INLINE_BUTTON_ROWS = 20;
+const MAX_INLINE_BUTTONS_PER_ROW = 8;
+const MAX_INLINE_BUTTON_LABEL_LENGTH = 128;
+const MAX_CALLBACK_DATA_BYTES = 64;
 const MIN_TIMESTAMP = 946684800;
 const MAX_TIMESTAMP = 4102444800;
 
@@ -85,6 +89,33 @@ function validateTimestamp(value) {
   return value;
 }
 
+function validateReplyMarkup(value) {
+  if (value === undefined) return undefined;
+  if (!isPlainObject(value) || !Array.isArray(value.inline_keyboard) || value.inline_keyboard.length > MAX_INLINE_BUTTON_ROWS) {
+    invalidInput('replyMarkup has an invalid structure');
+  }
+
+  return {
+    inline_keyboard: value.inline_keyboard.map((row, rowIndex) => {
+      if (!Array.isArray(row) || row.length > MAX_INLINE_BUTTONS_PER_ROW) {
+        invalidInput(`replyMarkup row ${rowIndex + 1} is invalid`);
+      }
+      return row.map((button, buttonIndex) => {
+        if (!isPlainObject(button)) invalidInput(`replyMarkup button ${buttonIndex + 1} is invalid`);
+        const text = validateString(button.text, `replyMarkup button ${buttonIndex + 1} text`, { max: MAX_INLINE_BUTTON_LABEL_LENGTH });
+        if (button.url !== undefined) {
+          if (!/^https:\/\/\S+$/i.test(button.url)) invalidInput('replyMarkup URL is invalid');
+          return { text, url: button.url };
+        }
+        if (typeof button.callback_data !== 'string' || Buffer.byteLength(button.callback_data, 'utf8') > MAX_CALLBACK_DATA_BYTES || !button.callback_data.trim()) {
+          invalidInput('replyMarkup callback is invalid');
+        }
+        return { text, callback_data: button.callback_data };
+      });
+    })
+  };
+}
+
 function validateQuery(value) {
   return validateString(value, 'query', { max: MAX_QUERY_LENGTH });
 }
@@ -99,7 +130,8 @@ function validateSchedulePayload(value) {
     message: validateMessage(value.message),
     entities: validateFormattingEntities(value.entities, value.message.length),
     targetTimestamp: validateTimestamp(value.targetTimestamp),
-    attachments: validateAttachments(value.attachments)
+    attachments: validateAttachments(value.attachments),
+    replyMarkup: validateReplyMarkup(value.replyMarkup)
   };
 }
 
@@ -163,7 +195,8 @@ function validateSendPayload(value) {
     chatId: validateChatId(value.chatId),
     message: validateMessage(value.message),
     entities: validateFormattingEntities(value.entities, value.message.length),
-    attachments: validateAttachments(value.attachments)
+    attachments: validateAttachments(value.attachments),
+    replyMarkup: validateReplyMarkup(value.replyMarkup)
   };
 }
 

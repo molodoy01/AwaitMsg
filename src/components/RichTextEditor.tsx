@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
 import type { RichTextEntity } from '@/types';
 import { editorHtmlToRichText, richTextToHtml } from '@/lib/richText';
 
@@ -7,13 +7,14 @@ interface Props {
   text: string;
   entities: RichTextEntity[];
   onChange: (text: string, entities: RichTextEntity[]) => void;
+  inputRef?: MutableRefObject<HTMLDivElement | null>;
   stageContent?: ReactNode;
-  stageMode?: 'editor' | 'schedule' | 'template' | 'chat';
+  stageMode?: 'editor' | 'schedule' | 'template' | 'chat' | 'buttons';
 }
 
 type FormatCommand = 'bold' | 'italic' | 'underline' | 'strikeThrough';
 
-export function RichTextEditor({ text, entities, onChange, stageContent, stageMode = 'editor' }: Props) {
+export function RichTextEditor({ text, entities, onChange, inputRef, stageContent, stageMode = 'editor' }: Props) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -36,7 +37,17 @@ export function RichTextEditor({ text, entities, onChange, stageContent, stageMo
   const saveSelection = () => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || !editorRef.current?.contains(selection.anchorNode)) return;
-    savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+    const range = selection.getRangeAt(0);
+    savedRangeRef.current = range.cloneRange();
+
+    const startRange = range.cloneRange();
+    startRange.selectNodeContents(editorRef.current);
+    startRange.setEnd(range.startContainer, range.startOffset);
+    const endRange = range.cloneRange();
+    endRange.selectNodeContents(editorRef.current);
+    endRange.setEnd(range.endContainer, range.endOffset);
+    editorRef.current.dataset.selectionStart = String(startRange.toString().length);
+    editorRef.current.dataset.selectionEnd = String(endRange.toString().length);
   };
 
   const restoreSelection = () => {
@@ -75,7 +86,10 @@ export function RichTextEditor({ text, entities, onChange, stageContent, stageMo
     >
       <div className="workspace-page-rich-text-stage">
         <div
-          ref={editorRef}
+          ref={(element) => {
+            editorRef.current = element;
+            if (inputRef) inputRef.current = element;
+          }}
           className={`workspace-page-textarea workspace-page-rich-text-input workspace-page-rich-text-stage-view ${stageMode === 'editor' ? 'is-active' : ''}`}
           contentEditable
           suppressContentEditableWarning

@@ -38,12 +38,13 @@ contextBridge.exposeInMainWorld('telegram', {
   getContacts: () =>
     ipcRenderer.invoke('telegram-contacts'),
 
-  send: (chatId, message, attachments = [], entities = []) =>
+  send: (chatId, message, attachments = [], entities = [], replyMarkup) =>
     ipcRenderer.invoke('telegram-send', {
       chatId,
       message,
       attachments,
-      entities
+      entities,
+      replyMarkup
     }),
 
   schedule: (data) =>

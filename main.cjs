@@ -32,6 +32,18 @@ const SECURE_CONFIG_PATH = path.join(
 
 let mainWindow = null;
 let isQuitting = false;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
 
 function readSecureConfig() {
   try {
@@ -610,7 +622,8 @@ ipcMain.handle('telegram-send', async (event, data) => {
       validated.chatId,
       validated.message,
       validated.attachments,
-      validated.entities
+      validated.entities,
+      validated.replyMarkup
     );
 
     return {
@@ -648,7 +661,8 @@ ipcMain.handle('telegram-schedule', async (event, data) => {
       undefined,
       validated.targetTimestamp,
       validated.attachments,
-      validated.entities
+      validated.entities,
+      validated.replyMarkup
     );
 
     return {

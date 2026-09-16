@@ -1,5 +1,6 @@
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
+const { fromTelegramInlineKeyboard, prepareInlineKeyboard } = require('./telegram-inline-keyboard.cjs');
 const {
   loadAccountSecrets,
   saveAccountSecrets,
@@ -1222,6 +1223,7 @@ async function getChatHistoryInternal(chatId, limit = 50) {
         mediaType: message.media?.className || '',
         mediaName: message.file?.name || '',
         media: await getPreviewMedia(message),
+        replyMarkup: fromTelegramInlineKeyboard(message.replyMarkup),
         groupId: message.groupedId ? String(message.groupedId) : ''
       };
     })))
@@ -1755,11 +1757,95 @@ function toTelegramFormattingEntities(entities = []) {
   });
 }
 
+function toDebugJson(value) {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (key, currentValue) => {
+    if (typeof currentValue === 'bigint') return `${currentValue}n`;
+    if (Buffer.isBuffer(currentValue)) return `<Buffer ${currentValue.toString('hex')}>`;
+    if (currentValue && typeof currentValue === 'object') {
+      if (seen.has(currentValue)) return '[Circular]';
+      seen.add(currentValue);
+    }
+    return currentValue;
+  }, 2);
+}
+
+function logTelegramPayload(label, payload) {
+  console.log(`[Telegram ${label}] JSON payload:`);
+  console.log(toDebugJson(payload));
+}
+
+function logTelegramMarkupDiagnostics(label, sendOptions, clientAtStart) {
+  const buttons = sendOptions.buttons;
+  console.log(`[Telegram ${label}] sendOptions:`);
+  console.dir(sendOptions, { depth: null });
+  logTelegramPayload(`${label} sendOptions`, sendOptions);
+  console.log(`[Telegram ${label}] buttons type:`, {
+    constructor: buttons?.constructor?.name || typeof buttons,
+    className: buttons?.className,
+    subclassOfId: buttons?.SUBCLASS_OF_ID,
+    rows: buttons?.rows?.map((row) => ({
+      constructor: row?.constructor?.name,
+      className: row?.className,
+      buttons: row?.buttons?.map((button) => ({
+        constructor: button?.constructor?.name,
+        className: button?.className,
+        text: button?.text,
+        type: button?.type?.constructor?.name || button?.type?.className,
+        url: button?.type?.url,
+        data: button?.type?.data,
+      })),
+    })),
+  });
+
+  try {
+    const rebuiltMarkup = buttons ? clientAtStart.buildReplyMarkup(buttons, true) : undefined;
+    console.log(`[Telegram ${label}] teleproto buildReplyMarkup result:`, {
+      constructor: rebuiltMarkup?.constructor?.name || typeof rebuiltMarkup,
+      className: rebuiltMarkup?.className,
+      rows: rebuiltMarkup?.rows?.length || 0,
+    });
+  } catch (error) {
+    console.error(`[Telegram ${label}] teleproto buildReplyMarkup failed:`, error);
+  }
+}
+
+async function withTelegramInvokeDiagnostics(clientAtStart, label, operation) {
+  const originalInvoke = clientAtStart.invoke;
+  const hadOwnInvoke = Object.prototype.hasOwnProperty.call(clientAtStart, 'invoke');
+
+  clientAtStart.invoke = async function invokeWithDiagnostics(request, ...args) {
+    console.log(`[Telegram ${label}] final client.invoke request:`);
+    console.dir(request, { depth: null });
+    console.log(`[Telegram ${label}] final request summary:`, {
+      constructor: request?.constructor?.name,
+      className: request?.className,
+      replyMarkup: request?.replyMarkup?.className || request?.replyMarkup?.constructor?.name,
+      replyMarkupRows: request?.replyMarkup?.rows?.length || 0,
+      media: request?.media?.className || request?.media?.constructor?.name,
+      file: request?.file,
+    });
+    logTelegramPayload(`${label} final invoke`, request);
+    return originalInvoke.call(this, request, ...args);
+  };
+
+  try {
+    return await operation();
+  } finally {
+    if (hadOwnInvoke) {
+      clientAtStart.invoke = originalInvoke;
+    } else {
+      delete clientAtStart.invoke;
+    }
+  }
+}
+
 async function sendMessageInternal(
   chatId,
   message,
   attachments = [],
-  entities = []
+  entities = [],
+  replyMarkup
 ) {
 
   if (!client) {
@@ -1785,11 +1871,35 @@ async function sendMessageInternal(
       sendOptions.file = attachments.length === 1 ? attachments[0] : attachments;
     }
 
-    await telegramRequest(() => withTimeout(
-        clientAtStart.sendMessage(target, sendOptions),
+    const preparedMarkup = prepareInlineKeyboard(replyMarkup);
+
+    if (attachments.length > 0) {
+      sendOptions.buttons = preparedMarkup;
+    }
+
+    const useDirectSendMessage = attachments.length === 0
+      && typeof clientAtStart.getInputEntity === 'function'
+      && typeof clientAtStart.invoke === 'function';
+    const sendOperation = !useDirectSendMessage
+      ? () => clientAtStart.sendMessage(target, sendOptions)
+      : async () => {
+        const peer = await clientAtStart.getInputEntity(target);
+        const request = new Api.messages.SendMessage({
+          peer,
+          message,
+          entities: sendOptions.formattingEntities,
+          replyMarkup: preparedMarkup,
+        });
+        return clientAtStart.invoke(request);
+      };
+
+    logTelegramMarkupDiagnostics('send', { ...sendOptions, buttons: preparedMarkup }, clientAtStart);
+
+      await withTelegramInvokeDiagnostics(clientAtStart, 'send', () => telegramRequest(() => withTimeout(
+        sendOperation(),
         REQUEST_TIMEOUT,
         'Sending Telegram message'
-      ));
+      )));
 
     if (client !== clientAtStart) {
       throw new Error('Telegram send was cancelled.');
@@ -1799,14 +1909,14 @@ async function sendMessageInternal(
 
   } catch (error) {
 
-    console.error('Telegram send failed:', error?.code || error?.name || 'unknown');
+    console.error('Telegram send failed:', error?.code || error?.name || 'unknown', error);
 
     throw error;
   }
 }
 
-function sendMessage(chatId, message, attachments, entities) {
-  return trackTelegramOperation('send', () => sendMessageInternal(chatId, message, attachments, entities));
+function sendMessage(chatId, message, attachments, entities, replyMarkup) {
+  return trackTelegramOperation('send', () => sendMessageInternal(chatId, message, attachments, entities, replyMarkup));
 }
 
 // =========================================================
@@ -1820,7 +1930,8 @@ async function scheduleMessageInternal(
   time,
   targetTimestamp,
   attachments = [],
-  entities = []
+  entities = [],
+  replyMarkup
 ) {
 
   if (!client) {
@@ -1887,11 +1998,33 @@ async function scheduleMessageInternal(
     sendOptions.file = attachments.length === 1 ? attachments[0] : attachments;
   }
 
-  const sendResult = await telegramRequest(() => withTimeout(
-    client.sendMessage(target, sendOptions),
+  const preparedMarkup = prepareInlineKeyboard(replyMarkup);
+  sendOptions.buttons = attachments.length > 0 ? preparedMarkup : undefined;
+
+  const useDirectSchedule = attachments.length === 0
+    && typeof client.getInputEntity === 'function'
+    && typeof client.invoke === 'function';
+  const scheduleOperation = !useDirectSchedule
+    ? () => client.sendMessage(target, sendOptions)
+    : async () => {
+      const peer = await client.getInputEntity(target);
+      const request = new Api.messages.SendMessage({
+        peer,
+        message,
+        entities: sendOptions.formattingEntities,
+        replyMarkup: preparedMarkup,
+        scheduleDate: scheduledDate,
+      });
+      return client.invoke(request);
+    };
+
+  logTelegramMarkupDiagnostics('schedule', { ...sendOptions, buttons: preparedMarkup }, client);
+
+  const sendResult = await withTelegramInvokeDiagnostics(client, 'schedule', () => telegramRequest(() => withTimeout(
+    scheduleOperation(),
     REQUEST_TIMEOUT,
     'Scheduling Telegram message'
-  ));
+  )));
 
   let telegramMessageId = null;
 
@@ -1975,7 +2108,7 @@ async function scheduleMessageInternal(
   };
 }
 
-function scheduleMessage(chatId, message, date, time, targetTimestamp, attachments, entities) {
+function scheduleMessage(chatId, message, date, time, targetTimestamp, attachments, entities, replyMarkup) {
   return trackTelegramOperation('schedule', () => scheduleMessageInternal(
     chatId,
     message,
@@ -1983,7 +2116,8 @@ function scheduleMessage(chatId, message, date, time, targetTimestamp, attachmen
     time,
     targetTimestamp,
     attachments,
-    entities
+    entities,
+    replyMarkup
   ));
 }
 

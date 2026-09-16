@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Chat, NotificationType, RichTextEntity, ScheduledMessage } from '@/types';
+import type { InlineKeyboardMarkup } from '@/lib/inlineKeyboard';
 import {
   applyScheduleResult,
   createPendingSchedule,
@@ -94,6 +95,7 @@ export function useScheduler({
           ),
           attachments: pendingMessage.attachments ?? [],
           entities: pendingMessage.entities ?? [],
+          replyMarkup: pendingMessage.replyMarkup,
         });
 
         if (cancelled) return;
@@ -185,6 +187,7 @@ export function useScheduler({
     time: string;
     attachments?: string[];
     entities?: RichTextEntity[];
+    replyMarkup?: InlineKeyboardMarkup;
   }, repeatOptions: ScheduleRepeatOptions = { mode: 'none', occurrences: 1 }) {
     if (scheduling) return;
 
@@ -249,6 +252,7 @@ export function useScheduler({
     const text = scheduleMessage;
     const attachments = assistantSchedule?.attachments ?? [];
     const entities = assistantSchedule?.entities ?? [];
+    const replyMarkup = assistantSchedule?.replyMarkup;
     const occurrenceDates = getScheduleOccurrences(whenDate, repeatOptions);
     const pendingMessages = occurrenceDates.map((occurrenceDate) => createPendingSchedule({
       operationId: uid(),
@@ -259,6 +263,7 @@ export function useScheduler({
       when: occurrenceDate.toISOString(),
       createdAt: new Date().toISOString(),
       entities,
+      replyMarkup,
     }));
 
     setUpcoming((current) => {
@@ -273,6 +278,7 @@ export function useScheduler({
       targetTimestamp: Math.floor(new Date(pendingMessage.when).getTime() / 1000),
       attachments,
       entities,
+      replyMarkup,
     }).then((result) => ({ result, operationId: pendingMessage.operationId! }))))
       .then((results) => {
         setScheduling(false);
@@ -420,7 +426,7 @@ export function useScheduler({
 
         scheduleCancelled = true;
 
-        return window.telegram.send(msg.chatId, msg.text, msg.attachments ?? [], msg.entities ?? []);
+        return window.telegram.send(msg.chatId, msg.text, msg.attachments ?? [], msg.entities ?? [], msg.replyMarkup);
       })
       .then((result) => {
         setSendingIds((prev) => {
@@ -494,13 +500,14 @@ export function useScheduler({
     text: string,
     attachments: string[] = [],
     entities: RichTextEntity[] = [],
+    replyMarkup?: InlineKeyboardMarkup,
   ) {
     if (publishingDraft || !text.trim()) return;
 
     setPublishingDraft(true);
 
     try {
-      const result = await window.telegram.send(chat.id, text, attachments, entities);
+      const result = await window.telegram.send(chat.id, text, attachments, entities, replyMarkup);
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to send message.');

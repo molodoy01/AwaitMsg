@@ -39,6 +39,7 @@ export interface ScheduledMessage {
   status: 'pending' | 'scheduled' | 'confirmed' | 'sent';
   attachments?: string[];
   entities?: RichTextEntity[];
+  replyMarkup?: import('./lib/inlineKeyboard').InlineKeyboardMarkup;
   operationId?: string;
   sentAt?: string;
   telegramMessageId?: string | number;
@@ -53,6 +54,7 @@ export interface PreviewHistoryMessage {
   mediaType?: string;
   mediaName?: string;
   media?: PreviewHistoryMedia;
+  replyMarkup?: import('./lib/inlineKeyboard').InlineKeyboardMarkup;
   groupId?: string;
 }
 

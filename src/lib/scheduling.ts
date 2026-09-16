@@ -1,4 +1,5 @@
 import type { RichTextEntity, ScheduledMessage } from '@/types';
+import type { InlineKeyboardMarkup } from './inlineKeyboard';
 
 export type PendingScheduleInput = Pick<
   ScheduledMessage,
@@ -7,6 +8,7 @@ export type PendingScheduleInput = Pick<
   operationId: string;
   attachments?: string[];
   entities?: RichTextEntity[];
+  replyMarkup?: InlineKeyboardMarkup;
 };
 
 export type TelegramScheduledMessage = {

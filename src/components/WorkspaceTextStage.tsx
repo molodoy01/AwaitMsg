@@ -4,6 +4,8 @@ import { CalendarDays, Clock, MessageCircle } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Chat, RichTextEntity, Template } from '@/types';
 import type { ScheduleRepeatOptions } from '@/lib/scheduling';
+import { InlineKeyboardBuilder } from '@/components/InlineKeyboardBuilder';
+import type { InlineButtonRow } from '@/lib/inlineKeyboard';
 
 const chatTypeLabels: Record<NonNullable<Chat['type']>, string> = {
   private: 'Private chat',
@@ -37,8 +39,8 @@ function getLocalTimezoneLabel() {
 }
 
 interface Props {
-  mode: 'editor' | 'schedule' | 'template' | 'chat';
-  onModeChange: (mode: 'editor' | 'schedule' | 'template' | 'chat') => void;
+  mode: 'editor' | 'schedule' | 'template' | 'chat' | 'buttons';
+  onModeChange: (mode: 'editor' | 'schedule' | 'template' | 'chat' | 'buttons') => void;
   selectedChat: Chat | null;
   chats: Chat[];
   selectedChats: Chat[];
@@ -73,6 +75,8 @@ interface Props {
   onDeleteTemplate: (template: Template) => void;
   closeTemplateEditor: () => void;
   saveTemplateStage: () => void;
+  inlineButtons: InlineButtonRow[];
+  setInlineButtons: (rows: InlineButtonRow[]) => void;
 }
 
 export function WorkspaceTextStage({
@@ -106,6 +110,8 @@ export function WorkspaceTextStage({
   onDeleteTemplate,
   closeTemplateEditor,
   saveTemplateStage,
+  inlineButtons,
+  setInlineButtons,
 }: Props) {
   const [showAddChat, setShowAddChat] = useState(false);
   const [addChatQuery, setAddChatQuery] = useState('');
@@ -520,6 +526,10 @@ export function WorkspaceTextStage({
             </div>
           </>
         )}
+      </div>
+
+      <div className={`workspace-page-rich-text-stage-view workspace-page-rich-text-buttons-stage ${mode === 'buttons' ? 'is-active' : ''}`} aria-hidden={mode !== 'buttons'}>
+        <InlineKeyboardBuilder rows={inlineButtons} onChange={setInlineButtons} open={mode === 'buttons'} onClose={() => onModeChange('editor')} />
       </div>
 
       <div className={`workspace-page-rich-text-stage-view workspace-page-rich-text-chat-stage ${mode === 'chat' ? 'is-active' : ''}`} aria-hidden={mode !== 'chat'}>
