@@ -7,6 +7,9 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { WorkspaceTextStage } from '@/components/WorkspaceTextStage';
 import { createTemplate, deleteTemplate, insertTextAtSelection, updateTemplate } from '@/lib/templates';
 import { normalizeRichTextEntities } from '@/lib/richText';
+import { sliceRichText } from '@/lib/richText';
+import { getMessageMaxLength } from '@/lib/messageLimits';
+import { appendPreviewMessage } from '@/lib/preview';
 import { toInlineKeyboardMarkup } from '@/lib/inlineKeyboard';
 import type { InlineButtonRow } from '@/lib/inlineKeyboard';
 import { loadTemplates, saveTemplates } from '@/lib/storage';
@@ -49,7 +52,7 @@ type WorkspacePageProps = {
     entities?: RichTextEntity[];
     replyMarkup?: ReturnType<typeof toInlineKeyboardMarkup>;
   }, repeat?: ScheduleRepeatOptions) => void;
-  handleSendDraftNow: (chat: Chat, text: string, attachments?: string[], entities?: RichTextEntity[], replyMarkup?: ReturnType<typeof toInlineKeyboardMarkup>) => Promise<void>;
+  handleSendDraftNow: (chat: Chat, text: string, attachments?: string[], entities?: RichTextEntity[], replyMarkup?: ReturnType<typeof toInlineKeyboardMarkup>) => Promise<boolean>;
   publishingDraft: boolean;
   handleCancelMessage: (message: ScheduledMessage) => void;
 };
@@ -207,6 +210,9 @@ export function WorkspacePage({
   const [previewHistoryLoading, setPreviewHistoryLoading] = useState(false);
   const [previewHistoryError, setPreviewHistoryError] = useState('');
   const [previewHistoryRetry, setPreviewHistoryRetry] = useState(0);
+  const [chatListOpen, setChatListOpen] = useState(false);
+  const [publishMenuOpen, setPublishMenuOpen] = useState(false);
+  const publishMenuRef = useRef<HTMLDivElement | null>(null);
   const [previewLayout, setPreviewLayout] = useState<PreviewLayout>(() => {
     const layout = initialPreviewLayoutRef.current ?? DEFAULT_PREVIEW_LAYOUT;
     return {
@@ -215,6 +221,15 @@ export function WorkspacePage({
     };
   });
   const previewCollapsed = previewLayout.collapsed === true;
+  const maxDraftLength = getMessageMaxLength(attachments.length > 0);
+
+  useEffect(() => {
+    if (draftBody.length <= maxDraftLength) return;
+
+    const limited = sliceRichText(draftBody, draftEntities, 0, maxDraftLength);
+    setDraftBody(limited.text);
+    setDraftEntities(limited.entities);
+  }, [attachments.length, draftBody, draftEntities, maxDraftLength]);
 
   useEffect(() => {
     window.localStorage.setItem(PREVIEW_LAYOUT_KEY, JSON.stringify(previewLayout));
@@ -231,11 +246,6 @@ export function WorkspacePage({
         collapsed: nextVisible ? current.collapsed : false,
       };
     });
-  };
-
-  const togglePreviewCollapsed = (event?: React.MouseEvent<HTMLButtonElement>) => {
-    event?.stopPropagation();
-    setPreviewLayout((current) => ({ ...current, collapsed: !current.collapsed }));
   };
 
   useEffect(() => {
@@ -261,18 +271,42 @@ export function WorkspacePage({
   }, [setSelectedChat, stageMode]);
 
   useEffect(() => {
+    if (!publishMenuOpen) return;
+
+    const closePublishMenu = (event: MouseEvent) => {
+      if (publishMenuRef.current && !publishMenuRef.current.contains(event.target as Node)) {
+        setPublishMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPublishMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', closePublishMenu);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closePublishMenu);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [publishMenuOpen]);
+
+  useEffect(() => {
     if (stageMode !== 'editor') return;
 
     const returnToSchedule = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
 
       event.preventDefault();
+      if (chatListOpen) {
+        setChatListOpen(false);
+        return;
+      }
       window.location.hash = '#/';
     };
 
     document.addEventListener('keydown', returnToSchedule);
     return () => document.removeEventListener('keydown', returnToSchedule);
-  }, [stageMode]);
+  }, [chatListOpen, stageMode]);
 
   useEffect(() => {
     const draft: WorkspaceDraft = {
@@ -340,13 +374,42 @@ export function WorkspacePage({
     };
   }, [connected, selectedChat, previewHistoryRetry]);
 
-  useLayoutEffect(() => {
-    if (!previewHistoryLoading && previewFeedRef.current) {
-      previewFeedRef.current.scrollTop = previewFeedRef.current.scrollHeight;
-    }
-  }, [previewHistory?.chat.id, previewHistory?.messages.length, previewHistoryLoading]);
-
   const previewText = stageMode === 'template' && templateEditingId ? templateDraftBody : draftBody;
+
+  useLayoutEffect(() => {
+    if (previewHistoryLoading || previewCollapsed) return;
+
+    const scrollPreviewToBottom = () => {
+      if (previewFeedRef.current) {
+        previewFeedRef.current.scrollTop = previewFeedRef.current.scrollHeight;
+      }
+    };
+
+    scrollPreviewToBottom();
+    const firstFrame = window.requestAnimationFrame(() => {
+      scrollPreviewToBottom();
+    });
+    const secondFrame = window.requestAnimationFrame(() => {
+      scrollPreviewToBottom();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [
+    previewHistory?.chat.id,
+    previewHistory?.messages.length,
+    previewHistoryLoading,
+    previewText,
+    draftEntities.length,
+    attachments.length,
+    inlineButtons.length,
+    chatListOpen,
+    previewCollapsed,
+    selectedChat?.id,
+  ]);
+
   const previewTime = new Date().toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -373,6 +436,35 @@ export function WorkspacePage({
     .filter((msg) => msg.chatId === (selectedChat?.id ?? ''))
     .sort((left, right) => new Date(left.when).getTime() - new Date(right.when).getTime())[0] ?? null;
   const canSchedule = Boolean(selectedChat) && Boolean(draftBody.trim()) && !scheduling;
+
+  const sendDraftNow = () => {
+    if (!selectedChat) return;
+
+    const chat = selectedChat;
+    const text = draftBody;
+    const replyMarkup = toInlineKeyboardMarkup(inlineButtons);
+    setPublishMenuOpen(false);
+    void handleSendDraftNow(
+      chat,
+      text,
+      attachments.map((attachment) => attachment.path).filter(Boolean),
+      draftEntities,
+      replyMarkup,
+    ).then((sent) => {
+      if (!sent) return;
+
+      setPreviewHistory((current) => {
+        if (!current || current.chat.id !== chat.id) return current;
+
+        return appendPreviewMessage(current, chat.id, text, replyMarkup);
+      });
+    });
+  };
+
+  const openScheduleStage = () => {
+    setPublishMenuOpen(false);
+    changeStageMode('schedule');
+  };
 
   const insertTextAtCursor = (insertedText: string) => {
     const editor = bodyInputRef.current;
@@ -580,10 +672,14 @@ export function WorkspacePage({
                     inputRef={bodyInputRef}
                     text={draftBody}
                     entities={draftEntities}
+                    maxLength={maxDraftLength}
                     stageMode={stageMode}
                     onChange={(nextText, nextEntities) => {
-                      setDraftBody(nextText);
-                      setDraftEntities(nextEntities);
+                      const limited = nextText.length > maxDraftLength
+                        ? sliceRichText(nextText, nextEntities, 0, maxDraftLength)
+                        : { text: nextText, entities: nextEntities };
+                      setDraftBody(limited.text);
+                      setDraftEntities(limited.entities);
                     }}
                     stageContent={(
                       <WorkspaceTextStage
@@ -644,34 +740,36 @@ export function WorkspacePage({
 
               </div>
 
-              {attachments.length > 0 && (
-                <div className="workspace-page-attachment-tray" aria-label="Attached files">
-                  <div className="workspace-page-media-items">
-                    {attachments.map((file, index) => (
-                      <div key={`${file.name}-${index}`} className="workspace-page-attachment-card">
-                        {isImageAttachment(file) && file.path ? (
-                          <img
-                            src={toFileUrl(file.path)}
-                            alt=""
-                            className="workspace-page-attachment-thumbnail"
-                          />
-                        ) : (
-                          <div className="workspace-page-attachment-file-mark">FILE</div>
-                        )}
-                        <span className="workspace-page-attachment-name">{file.name}</span>
-                        <button
-                          type="button"
-                          className="workspace-page-attachment-remove"
-                          onClick={() => handleRemoveAttachment(index)}
-                          aria-label={`Remove ${file.name}`}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+              <div
+                className={`workspace-page-attachment-tray ${attachments.length === 0 ? 'is-empty' : ''}`}
+                aria-label="Attached files"
+                aria-hidden={attachments.length === 0}
+              >
+                <div className="workspace-page-media-items">
+                  {attachments.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="workspace-page-attachment-card">
+                      {isImageAttachment(file) && file.path ? (
+                        <img
+                          src={toFileUrl(file.path)}
+                          alt=""
+                          className="workspace-page-attachment-thumbnail"
+                        />
+                      ) : (
+                        <div className="workspace-page-attachment-file-mark">FILE</div>
+                      )}
+                      <span className="workspace-page-attachment-name">{file.name}</span>
+                      <button
+                        type="button"
+                        className="workspace-page-attachment-remove"
+                        onClick={() => handleRemoveAttachment(index)}
+                        aria-label={`Remove ${file.name}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
 
               <div className="workspace-page-action-row workspace-page-schedule-row">
                 <div className="workspace-page-media-row">
@@ -750,50 +848,42 @@ export function WorkspacePage({
                   </button>
                 </div>
 
-                <div className="workspace-page-submit-actions">
+                <div className="workspace-page-submit-actions" ref={publishMenuRef}>
                   <button
                     type="button"
-                    className="workspace-page-send-button"
-                    onClick={() => {
-                      if (!selectedChat) return;
-                      void handleSendDraftNow(
-                        selectedChat,
-                        draftBody,
-                        attachments.map((attachment) => attachment.path).filter(Boolean),
-                        draftEntities,
-                        toInlineKeyboardMarkup(inlineButtons),
-                      );
-                    }}
-                    disabled={!selectedChat || !draftBody.trim() || publishingDraft || scheduling}
+                    className="workspace-page-publish-trigger"
+                    onClick={() => setPublishMenuOpen((current) => !current)}
+                    aria-expanded={publishMenuOpen}
+                    aria-haspopup="menu"
                   >
-                    {publishingDraft ? 'Sending…' : successPulse && lastAction === 'sent' ? 'Sent' : 'Send now'}
+                    <span className="workspace-page-publish-trigger-main">Publish</span>
+                    <span className="workspace-page-publish-trigger-arrow" aria-hidden="true">▾</span>
                   </button>
 
-                  <button
-                    type="button"
-                    className={`workspace-page-schedule-button ${successPulse ? 'is-success' : ''}`}
-                    onClick={() => {
-                      if (!selectedChat) return;
-                      handleSchedule({
-                        chatId: selectedChat.id,
-                        message: draftBody,
-                        date,
-                        time,
-                        entities: draftEntities,
-                        attachments: attachments
-                          .map((attachment) => attachment.path)
-                          .filter(Boolean),
-                        replyMarkup: toInlineKeyboardMarkup(inlineButtons),
-                      }, {
-                        mode: repeatMode,
-                        days: repeatDays,
-                        occurrences: repeatMode === 'none' ? 1 : repeatOccurrences,
-                      });
-                    }}
-                    disabled={!canSchedule}
-                  >
-                    {scheduling ? 'Scheduling…' : successPulse && lastAction === 'scheduled' ? 'Scheduled' : 'Schedule'}
-                  </button>
+                  {publishMenuOpen && (
+                    <div className="workspace-page-publish-menu" role="menu" aria-label="Publish action">
+                      <button
+                        type="button"
+                        className="workspace-page-publish-option"
+                        onClick={sendDraftNow}
+                        disabled={!selectedChat || !draftBody.trim() || publishingDraft || scheduling}
+                        role="menuitem"
+                      >
+                        <span>{publishingDraft ? 'Sending…' : successPulse && lastAction === 'sent' ? 'Sent' : 'Send now'}</span>
+                        <small>Publish immediately</small>
+                      </button>
+                      <button
+                        type="button"
+                        className="workspace-page-publish-option is-scheduled"
+                        onClick={openScheduleStage}
+                        disabled={!canSchedule}
+                        role="menuitem"
+                      >
+                        <span>{scheduling ? 'Scheduling…' : successPulse && lastAction === 'scheduled' ? 'Scheduled' : 'Schedule'}</span>
+                        <small>{scheduleSummary === 'Schedule' ? 'Choose date and time' : scheduleSummary}</small>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -830,6 +920,7 @@ export function WorkspacePage({
             data-visible={previewLayout.visible === false ? 'false' : 'true'}
           >
             <ChatPreviewStand
+              chats={chats}
               selectedChat={selectedChat}
               previewHistory={previewHistory}
               previewHistoryLoading={previewHistoryLoading}
@@ -842,7 +933,12 @@ export function WorkspacePage({
               attachments={attachments}
               previewTime={previewTime}
               collapsed={previewCollapsed}
-              onToggleCollapsed={togglePreviewCollapsed}
+              chatListOpen={chatListOpen}
+              onToggleChatList={() => setChatListOpen((current) => !current)}
+              onSelectChat={(chat) => {
+                setSelectedChat(chat);
+                setChatListOpen(false);
+              }}
             />
           </section>
         </main>

@@ -10,7 +10,8 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'node',
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
     passWithNoTests: true,
   },
 });

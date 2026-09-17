@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject, ReactNode } from 'react';
 import type { RichTextEntity } from '@/types';
-import { editorHtmlToRichText, richTextToHtml } from '@/lib/richText';
+import { editorHtmlToRichText, richTextToHtml, sliceRichText } from '@/lib/richText';
+import { getMessageCounterTone, getRemainingMessageLength } from '@/lib/messageLimits';
 
 interface Props {
   text: string;
@@ -10,15 +11,17 @@ interface Props {
   inputRef?: MutableRefObject<HTMLDivElement | null>;
   stageContent?: ReactNode;
   stageMode?: 'editor' | 'schedule' | 'template' | 'chat' | 'buttons';
+  maxLength: number;
 }
 
 type FormatCommand = 'bold' | 'italic' | 'underline' | 'strikeThrough';
 
-export function RichTextEditor({ text, entities, onChange, inputRef, stageContent, stageMode = 'editor' }: Props) {
+export function RichTextEditor({ text, entities, onChange, inputRef, stageContent, stageMode = 'editor', maxLength }: Props) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [toolbarActive, setToolbarActive] = useState(false);
+  const [editorFocused, setEditorFocused] = useState(false);
   const [linkUrl, setLinkUrl] = useState('https://');
 
   useEffect(() => {
@@ -31,7 +34,25 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
   const emitChange = () => {
     if (!editorRef.current) return;
     const value = editorHtmlToRichText(editorRef.current);
-    onChange(value.text, value.entities);
+    const limited = value.text.length > maxLength
+      ? sliceRichText(value.text, value.entities, 0, maxLength)
+      : value;
+
+    if (limited !== value) {
+      editorRef.current.innerHTML = richTextToHtml(limited.text, limited.entities);
+    }
+    onChange(limited.text, limited.entities);
+  };
+
+  const handleBeforeInput = (event: React.FormEvent<HTMLDivElement>) => {
+    if (!editorRef.current || !event.nativeEvent) return;
+    const inputEvent = event.nativeEvent as InputEvent;
+    if (!inputEvent.inputType.startsWith('insert')) return;
+
+    const selection = window.getSelection();
+    const selectedLength = selection?.toString().length ?? 0;
+    const currentLength = editorHtmlToRichText(editorRef.current).text.length;
+    if (currentLength - selectedLength >= maxLength) event.preventDefault();
   };
 
   const saveSelection = () => {
@@ -74,6 +95,9 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
     emitChange();
   };
 
+  const remainingCharacters = getRemainingMessageLength(text.length, maxLength);
+  const counterTone = getMessageCounterTone(remainingCharacters);
+
   return (
     <div
       className={`workspace-page-rich-text-editor ${stageMode === 'editor' && toolbarActive ? 'is-toolbar-active' : ''}`}
@@ -90,7 +114,7 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
             editorRef.current = element;
             if (inputRef) inputRef.current = element;
           }}
-          className={`workspace-page-textarea workspace-page-rich-text-input workspace-page-rich-text-stage-view ${stageMode === 'editor' ? 'is-active' : ''}`}
+          className={`workspace-page-textarea workspace-page-rich-text-input workspace-page-rich-text-stage-view ${stageMode === 'editor' ? 'is-active' : ''} ${text.trim() || editorFocused ? 'has-content' : 'is-empty'}`}
           contentEditable
           suppressContentEditableWarning
           role="textbox"
@@ -98,11 +122,16 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
           data-placeholder="Start writing your post..."
           spellCheck
           aria-hidden={stageMode !== 'editor'}
+          onFocus={() => setEditorFocused(true)}
+          onBeforeInput={handleBeforeInput}
           onInput={emitChange}
           onMouseUp={saveSelection}
           onKeyUp={saveSelection}
           onSelect={saveSelection}
-          onBlur={saveSelection}
+          onBlur={() => {
+            setEditorFocused(false);
+            saveSelection();
+          }}
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
               event.preventDefault();
@@ -132,6 +161,12 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
         >
           ↗
         </button>
+        <span
+          className={`workspace-page-character-count ${counterTone === 'critical' ? 'is-critical' : counterTone === 'warning' ? 'is-warning' : ''}`}
+          aria-live="polite"
+        >
+          {remainingCharacters}
+        </span>
       </div>
       {linkOpen && (
         <div className="workspace-page-rich-text-link-popover">

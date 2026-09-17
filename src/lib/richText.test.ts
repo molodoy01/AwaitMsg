@@ -36,4 +36,17 @@ describe('rich text entities', () => {
       ],
     });
   });
+
+  it('returns an empty rich-text value when the limit is zero', () => {
+    expect(sliceRichText('Cannot continue', [
+      { type: 'bold', offset: 0, length: 15 },
+    ], 0, 0)).toEqual({ text: '', entities: [] });
+  });
+
+  it('keeps line breaks while truncating a message', () => {
+    expect(sliceRichText('First\nSecond', [], 0, 6)).toEqual({
+      text: 'First\n',
+      entities: [],
+    });
+  });
 });

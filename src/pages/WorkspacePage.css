@@ -2131,12 +2131,16 @@
   flex: 1 1 auto;
   min-height: 180px;
   max-height: none;
+  position: relative;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.workspace-page-rich-text-input:empty::before {
+.workspace-page-rich-text-input.is-empty::before {
+  position: absolute;
+  top: 23px;
+  left: 18px;
   content: attr(data-placeholder);
   color: var(--dim);
   pointer-events: none;
@@ -2144,7 +2148,7 @@
 
 .workspace-page-rich-text-toolbar {
   position: absolute;
-  right: 32px;
+  right: 0;
   bottom: 0;
   left: auto;
   z-index: 5;
@@ -2199,6 +2203,35 @@
   background: rgba(17, 19, 22, 0.2);
   color: var(--text);
   transform: none;
+}
+
+.workspace-page-character-count {
+  position: absolute;
+  right: calc(100% + 12px);
+  bottom: -3px;
+  min-width: 38px;
+  margin: 0;
+  color: rgba(226, 230, 235, 0.56);
+  font-family: 'Roboto Condensed', 'Arial Narrow', sans-serif;
+  font-size: 13px;
+  font-stretch: condensed;
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
+  letter-spacing: 0.035em;
+  line-height: 22px;
+  opacity: 0.88;
+  text-align: right;
+  transform: scaleX(0.86);
+  transform-origin: right center;
+  transition: color 160ms ease;
+}
+
+.workspace-page-character-count.is-warning {
+  color: #e36b6b;
+}
+
+.workspace-page-character-count.is-critical {
+  color: #ff3030;
 }
 
 .workspace-page-template-stage-list-header,
@@ -2288,6 +2321,16 @@
   font-size: 11px;
 }
 
+.workspace-page-rich-text-link-popover button {
+  width: auto;
+  min-width: 58px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 5px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .workspace-page-divider {
   border-top: 1px solid var(--line);
 }
@@ -2316,6 +2359,11 @@
   padding: 8px 0;
   border-top: 1px solid rgba(154, 168, 184, 0.1);
   border-bottom: 1px solid rgba(154, 168, 184, 0.1);
+}
+
+.workspace-page-attachment-tray.is-empty {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .workspace-page-attachment-tray .workspace-page-media-items {
@@ -2538,11 +2586,122 @@
 }
 
 .workspace-page-submit-actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+.workspace-page-publish-trigger {
+  display: grid;
+  width: 150px;
+  min-height: 38px;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  padding: 0;
+  border: 1px solid rgba(154, 168, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(154, 168, 184, 0.06);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  transition: color 0.15s ease;
+}
+
+.workspace-page-publish-trigger:hover,
+.workspace-page-publish-trigger[aria-expanded='true'] {
+  border-color: var(--signal);
+  background: rgba(154, 168, 184, 0.1);
+  color: #edf7fb;
+}
+
+.workspace-page-publish-trigger-main,
+.workspace-page-publish-trigger-arrow {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.workspace-page-publish-trigger-main {
+  min-width: 0;
+}
+
+.workspace-page-publish-trigger-arrow {
+  border-left: 1px solid rgba(154, 168, 184, 0.34);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.workspace-page-publish-trigger-main {
+  color: inherit;
+}
+
+.workspace-page-publish-trigger-arrow {
+  color: #edf7fb;
+}
+
+.workspace-page-publish-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 260;
+  display: grid;
+  width: 224px;
+  padding: 5px;
+  border: 1px solid rgba(154, 168, 184, 0.2);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(16, 20, 23, 0.99), rgba(10, 13, 16, 0.99));
+  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(154, 168, 184, 0.05);
+}
+
+.workspace-page-publish-option {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.workspace-page-publish-option + .workspace-page-publish-option {
+  margin-top: 5px;
+  padding-top: 14px;
+  border-top: 3px solid rgba(154, 168, 184, 0.2);
+}
+
+.workspace-page-publish-option span {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-page-publish-option small {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.workspace-page-publish-option:hover:not(:disabled) {
+  border-radius: 6px;
+  background: rgba(154, 168, 184, 0.08);
+}
+
+.workspace-page-publish-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .workspace-page-send-button:hover:not(:disabled) {
@@ -4195,11 +4354,11 @@
     right: 8px;
     bottom: 8px;
     gap: 4px;
-    padding: 4px;
-    border: 1px solid rgba(154, 168, 184, 0.18);
-    border-radius: 7px;
-    background: rgba(17, 19, 22, 0.86);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   .workspace-page-rich-text-toolbar button {

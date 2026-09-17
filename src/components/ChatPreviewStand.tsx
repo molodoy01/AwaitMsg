@@ -16,6 +16,7 @@ type WallpaperTheme = 'telegram' | 'graphite' | 'custom';
 const CHAT_WALLPAPER_STORAGE_KEY = 'awaitmsg-chat-preview-wallpaper';
 
 type ChatPreviewStandProps = {
+  chats: Chat[];
   selectedChat: Chat | null;
   previewHistory: PreviewChatHistory | null;
   previewHistoryLoading: boolean;
@@ -28,7 +29,9 @@ type ChatPreviewStandProps = {
   attachments: PreviewAttachment[];
   previewTime: string;
   collapsed: boolean;
-  onToggleCollapsed: () => void;
+  chatListOpen: boolean;
+  onToggleChatList: () => void;
+  onSelectChat: (chat: Chat) => void;
 };
 
 type HistoryGroup = {
@@ -186,6 +189,7 @@ function getEntityText(text: string, entity: RichTextEntity) {
 
 export function ChatPreviewStand({
   selectedChat,
+  chats,
   previewHistory,
   previewHistoryLoading,
   previewHistoryError,
@@ -197,7 +201,9 @@ export function ChatPreviewStand({
   attachments,
   previewTime,
   collapsed,
-  onToggleCollapsed,
+  chatListOpen,
+  onToggleChatList,
+  onSelectChat,
 }: ChatPreviewStandProps) {
   const savedWallpaper = useMemo(loadSavedWallpaper, []);
   const [wallpaperTheme, setWallpaperTheme] = useState<WallpaperTheme>(savedWallpaper.theme);
@@ -216,15 +222,30 @@ export function ChatPreviewStand({
       // Ignore unavailable or full local storage; the current session still works.
     }
   }, [lastUploadedWallpaper, wallpaperAccent, wallpaperTheme]);
-  const previewTitle = previewHistory?.chat.title || selectedChat?.name || 'Select a chat';
-  const previewType = previewHistory?.chat.topic
-    || (previewHistory?.chat.username ? `@${previewHistory.chat.username}` : '')
-    || previewHistory?.chat.type
+
+  useEffect(() => {
+    if (!chatListOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onToggleChatList();
+    };
+
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [chatListOpen, onToggleChatList]);
+
+  const activePreviewHistory = previewHistory?.chat.id === selectedChat?.id
+    ? previewHistory
+    : null;
+  const previewTitle = activePreviewHistory?.chat.title || selectedChat?.name || 'Select a chat';
+  const previewType = activePreviewHistory?.chat.topic
+    || (activePreviewHistory?.chat.username ? `@${activePreviewHistory.chat.username}` : '')
+    || activePreviewHistory?.chat.type
     || selectedChat?.type
     || 'online';
   const historyGroups = useMemo(
-    () => groupHistory(previewHistory?.messages ?? []),
-    [previewHistory?.messages],
+    () => groupHistory(activePreviewHistory?.messages ?? []),
+    [activePreviewHistory?.messages],
   );
   const imageAttachments = attachments.filter(isImageAttachment);
   const documentAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
@@ -261,7 +282,7 @@ export function ChatPreviewStand({
         : 'rgba(49, 70, 73, 0.9)';
 
   return (
-    <div className={`chat-preview-stand ${collapsed ? 'is-collapsed' : ''}`}>
+    <div className={`chat-preview-stand ${collapsed ? 'is-collapsed' : ''} ${chatListOpen ? 'is-chat-list-open' : ''}`}>
       <div className="chat-preview-toolbar">
         <span className="chat-preview-toolbar-label">Live chat preview</span>
         <div className="chat-preview-wallpaper-picker" aria-label="Chat wallpaper">
@@ -291,10 +312,33 @@ export function ChatPreviewStand({
         />
       </div>
 
-      <div className={`chat-preview-window theme-${wallpaperTheme}`} style={wallpaperStyle}>
+      <div className={`chat-preview-window theme-${wallpaperTheme} ${chatListOpen ? 'is-chat-list-open' : ''}`} style={wallpaperStyle}>
+        {chatListOpen && (
+          <aside className="chat-preview-chat-list" aria-label="Chats">
+            <div className="chat-preview-chat-list-heading">Chats</div>
+            <div className="chat-preview-chat-list-items">
+              {chats.map((chat) => (
+                <button
+                  type="button"
+                  key={chat.id}
+                  className={`chat-preview-chat-list-item ${selectedChat?.id === chat.id ? 'is-selected' : ''}`}
+                  onClick={() => onSelectChat(chat)}
+                >
+                  <span className="chat-preview-chat-list-avatar" aria-hidden="true">
+                    {chat.avatarDataUrl ? <img src={chat.avatarDataUrl} alt="" /> : chat.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="chat-preview-chat-list-copy">
+                    <strong>{chat.name}</strong>
+                    <span>{chat.name === 'Saved Messages' ? 'Saved Messages' : chat.type || 'Chat'}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
         <header className="chat-preview-header">
-          {previewHistory?.chat.avatarDataUrl ? (
-            <img className="chat-preview-avatar" src={previewHistory.chat.avatarDataUrl} alt="" />
+          {activePreviewHistory?.chat.avatarDataUrl ? (
+            <img className="chat-preview-avatar" src={activePreviewHistory.chat.avatarDataUrl} alt="" />
           ) : (
             <div className="chat-preview-avatar" aria-hidden="true">{previewTitle.slice(0, 1).toUpperCase()}</div>
           )}
@@ -302,9 +346,11 @@ export function ChatPreviewStand({
             <strong>{previewTitle}</strong>
             <span><i className="chat-preview-status-dot" aria-hidden="true" />{previewType === 'private' ? 'online' : previewType}</span>
           </div>
-          <button type="button" className="chat-preview-collapse" onClick={onToggleCollapsed} aria-label={collapsed ? 'Expand preview' : 'Collapse preview'}>
-            {collapsed ? '+' : '−'}
-          </button>
+          <div className="chat-preview-header-actions">
+            <button type="button" className="chat-preview-expand" onClick={onToggleChatList} aria-label={chatListOpen ? 'Hide chats' : 'Show chats'} title={chatListOpen ? 'Hide chats' : 'Show chats'}>
+              {chatListOpen ? '×' : '☰'}
+            </button>
+          </div>
         </header>
 
         {!collapsed && (
@@ -324,7 +370,7 @@ export function ChatPreviewStand({
                 const hasMedia = group.messages.some((message) => message.media);
                 const caption = group.messages.find((message) => message.text)?.text;
                 return (
-                  <article className={`chat-preview-bubble ${firstMessage.outgoing ? 'is-outgoing' : 'is-incoming'}`} key={group.key}>
+                  <article className={`chat-preview-bubble ${firstMessage.outgoing ? 'is-outgoing' : 'is-incoming'} ${hasMedia ? 'has-media' : ''}`} key={group.key}>
                     {firstMessage.senderName && !firstMessage.outgoing && <strong className="chat-preview-sender">{firstMessage.senderName}</strong>}
                     {hasMedia && (
                       <div className={`chat-preview-history-grid ${group.messages.length > 1 ? 'is-album' : ''}`}>

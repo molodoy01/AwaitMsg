@@ -502,7 +502,7 @@ export function useScheduler({
     entities: RichTextEntity[] = [],
     replyMarkup?: InlineKeyboardMarkup,
   ) {
-    if (publishingDraft || !text.trim()) return;
+    if (publishingDraft || !text.trim()) return false;
 
     setPublishingDraft(true);
 
@@ -537,12 +537,14 @@ export function useScheduler({
       showNotification('Message sent to Telegram.', 'success', 'Sent');
       window.setTimeout(() => setSuccessPulse(false), 1500);
       window.setTimeout(() => setLastAction(null), 1500);
+      return true;
     } catch (error) {
       showNotification(
         error instanceof Error ? error.message : 'Network error while sending.',
         'error',
         'Send failed',
       );
+      return false;
     } finally {
       setPublishingDraft(false);
     }
