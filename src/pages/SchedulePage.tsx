@@ -3,6 +3,7 @@ import { Pencil, Settings } from 'lucide-react';
 import { Notification } from '@/components/Notification';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
+import { MessagesPanel } from '@/components/MessagesPanel';
 import { getTimezoneLabel } from '@/lib/utils';
 import type { AssistantIntent } from '@/hooks/useAssistant';
 import type { Chat, NotificationState, ScheduledMessage } from '@/types';
@@ -150,8 +151,20 @@ export function SchedulePage(props: SchedulePageProps) {
     timeEditedRef,
     openPickerRef,
     handleSchedule,
+    upcoming,
+    sent,
+    activeTab,
     setDate,
     setTime,
+    revealingId,
+    cancelingIds,
+    sendingIds,
+    handleCancelMessage,
+    handleSendNow,
+    handleDeleteMessage,
+    handleClearSent,
+    handleClearAll,
+    setActiveTab,
     onOpenSettings,
     showNotification,
   } = props;
@@ -587,6 +600,24 @@ export function SchedulePage(props: SchedulePageProps) {
               >
                 {scheduling ? 'Scheduling…' : successPulse ? 'SEALED' : 'Seal it'}
               </button>
+            </section>
+
+            <section className="messages-panel-wrapper">
+              <MessagesPanel
+                upcoming={upcoming}
+                sent={sent}
+                assistantText={displayedAssistantResponse}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                onCancel={handleCancelMessage}
+                onSendNow={handleSendNow}
+                onDelete={handleDeleteMessage}
+                onClearSent={handleClearSent}
+                onClearAll={handleClearAll}
+                cancelingIds={cancelingIds}
+                sendingIds={sendingIds}
+                revealingId={revealingId}
+              />
             </section>
 
             <footer>

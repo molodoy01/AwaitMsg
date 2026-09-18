@@ -21,6 +21,7 @@ export type TelegramScheduleResult = {
   success: boolean;
   telegramMessageId?: string | number;
   id?: string | number;
+  confirmed?: boolean;
   error?: string;
 };
 
@@ -129,7 +130,7 @@ export function applyScheduleResult(
     message.operationId === operationId
       ? {
           ...message,
-          status: 'scheduled',
+          status: result.confirmed ? 'confirmed' : 'scheduled',
           telegramMessageId,
         }
       : message

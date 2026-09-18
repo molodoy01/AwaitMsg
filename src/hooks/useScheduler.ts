@@ -21,6 +21,8 @@ import {
   uid,
 } from '@/lib/utils';
 
+const TELEGRAM_CONFIRMATION_DELAY_MS = 3500;
+
 export type AssistantIntentLike = {
   action: 'schedule' | 'clarify';
   chat: string;
@@ -60,7 +62,6 @@ export function useScheduler({
   const timeEditedRef = useRef(false);
   const [upcoming, setUpcoming] = useState<ScheduledMessage[]>([]);
   const [sent, setSent] = useState<ScheduledMessage[]>([]);
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'sent'>('upcoming');
   const [scheduling, setScheduling] = useState(false);
   const [successPulse, setSuccessPulse] = useState(false);
   const [lastAction, setLastAction] = useState<'sent' | 'scheduled' | null>(null);
@@ -267,7 +268,11 @@ export function useScheduler({
     }));
 
     setUpcoming((current) => {
-      const updated = [...current, ...pendingMessages];
+      const scheduledMessages: ScheduledMessage[] = pendingMessages.map((pendingMessage) => ({
+        ...pendingMessage,
+        status: 'scheduled' as const,
+      }));
+      const updated = scheduledMessages.concat(current);
       saveUpcoming(updated);
       return updated;
     });
@@ -284,17 +289,30 @@ export function useScheduler({
         setScheduling(false);
         const successful = results.filter(({ result }) => result.success);
 
-        successful.forEach(({ result, operationId }) => {
-          const telegramMessageId = result.telegramMessageId ?? result.id;
+        window.setTimeout(() => {
           setUpcoming((current) => {
-            const updated = applyScheduleResult(current, operationId, {
-              success: true,
-              telegramMessageId,
+            const updated = current.map((message) => {
+              const resultEntry = results.find(
+                ({ operationId }) => operationId === message.operationId,
+              );
+
+              if (!resultEntry) return message;
+
+              if (!resultEntry.result.success || !resultEntry.result.confirmed) {
+                return { ...message, status: 'pending' as const };
+              }
+
+              return applyScheduleResult(current, message.operationId!, {
+                success: true,
+                telegramMessageId: resultEntry.result.telegramMessageId ?? resultEntry.result.id,
+                confirmed: true,
+              }).find((item) => item.operationId === message.operationId) ?? message;
             });
+
             saveUpcoming(updated);
             return updated;
           });
-        });
+        }, TELEGRAM_CONFIRMATION_DELAY_MS);
 
         if (successful.length === 0) {
           showNotification(
@@ -606,7 +624,10 @@ export function useScheduler({
       const failedIds = new Set(
         results.filter((result) => !result.success).map((result) => result.message.id),
       );
-      const remaining = upcoming.filter((msg) => failedIds.has(msg.id));
+      const cancelableIds = new Set(cancelable.map((msg) => msg.id));
+      const remaining = upcoming.filter(
+        (msg) => !cancelableIds.has(msg.id) || failedIds.has(msg.id),
+      );
 
       setUpcoming(remaining);
       saveUpcoming(remaining);
@@ -632,8 +653,6 @@ export function useScheduler({
     setUpcoming,
     sent,
     setSent,
-    activeTab,
-    setActiveTab,
     scheduling,
     setScheduling,
     successPulse,

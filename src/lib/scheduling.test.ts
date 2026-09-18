@@ -91,6 +91,21 @@ describe('Pending scheduling recovery', () => {
     });
   });
 
+  it('marks a message confirmed when Telegram confirms the schedule', () => {
+    const pending = createPending('operation-1');
+    const updated = applyScheduleResult(
+      [pending],
+      'operation-1',
+      { success: true, telegramMessageId: 'telegram-1', confirmed: true }
+    );
+
+    expect(updated[0]).toMatchObject({
+      operationId: 'operation-1',
+      status: 'confirmed',
+      telegramMessageId: 'telegram-1',
+    });
+  });
+
   it('persists telegramMessageId in the same local record', () => {
     const pending = createPending('operation-1');
     const scheduled = applyScheduleResult(

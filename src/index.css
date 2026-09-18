@@ -2210,8 +2210,22 @@ textarea:focus-visible {
 .tab-content.hidden { display: none; }
 
 .message-list {
+  position: relative;
   display: flex;
   flex-direction: column;
+}
+
+.message-list::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  bottom: 28px;
+  left: 29px;
+  width: 2px;
+  background: linear-gradient(180deg, rgba(111, 155, 124, 0.82), rgba(111, 155, 124, 0.18));
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .message-timeline-group-recent .message-row,
@@ -2233,20 +2247,6 @@ textarea:focus-visible {
 .message-timeline-group-older {
   margin-top: 20px;
   padding-top: 12px;
-}
-
-.message-timeline-group-recent::before,
-.message-timeline-group-older::before {
-  content: "";
-  position: absolute;
-  top: var(--timeline-top, 13px);
-  left: var(--timeline-left, 29px);
-  width: 2px;
-  height: var(--timeline-height, 0px);
-  background: linear-gradient(180deg, rgba(111, 155, 124, 0.82), rgba(111, 155, 124, 0.18));
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 1;
 }
 
 .empty-state {
@@ -2633,6 +2633,12 @@ textarea:focus-visible {
   box-shadow: inset 0 0 0 1px rgba(212, 169, 51, 0.18);
 }
 
+.message-status.pending {
+  color: #e06b6b;
+  background: rgba(224, 107, 107, 0.09);
+  box-shadow: inset 0 0 0 1px rgba(224, 107, 107, 0.2);
+}
+
 .message-status.confirmed,
 .message-status.sent {
   color: #6ecf7e;
@@ -2969,6 +2975,7 @@ textarea:active,
   .message-row { grid-template-columns: 10px 1fr auto; gap: 8px; padding: 8px 0; }
   .message-timeline-group-recent .message-row,
   .message-timeline-group-older .message-row { padding-bottom: 20px; }
+  .message-list::before { left: 5px; }
 }
 
 @media (max-width: 600px) {

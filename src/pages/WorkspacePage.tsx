@@ -485,9 +485,6 @@ export function WorkspacePage({
 
     return `${summaryDate} · ${summaryTime}`;
   })();
-  const scheduledForCurrentChat = [...upcoming]
-    .filter((msg) => msg.chatId === (selectedChat?.id ?? ''))
-    .sort((left, right) => new Date(left.when).getTime() - new Date(right.when).getTime())[0] ?? null;
   const canSchedule = Boolean(selectedChat) && Boolean(draftBody.trim()) && !scheduling;
 
   const sendDraftNow = () => {
@@ -1003,26 +1000,6 @@ export function WorkspacePage({
                 <div className="workspace-page-draft-meta">Draft saved: {savedAt}</div>
               </div>
 
-              {scheduledForCurrentChat && (
-                <div className="workspace-page-scheduled-status">
-                  <div className="workspace-page-scheduled-label">Scheduled</div>
-                  <div className="workspace-page-scheduled-value">
-                    {new Date(scheduledForCurrentChat.when).toLocaleString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    className="workspace-page-cancel-button"
-                    onClick={() => handleCancelMessage(scheduledForCurrentChat)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
             </div>
           </section>
 

@@ -27,6 +27,8 @@ function App() {
   const [message, setMessage] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<AppRoute>(getCurrentHashPath());
+  const [scheduleActiveTab, setScheduleActiveTab] = useState<'upcoming' | 'sent'>('upcoming');
+  const [workspaceActiveTab, setWorkspaceActiveTab] = useState<'upcoming' | 'sent'>('upcoming');
 
   const {
     notification,
@@ -121,7 +123,6 @@ function App() {
     time,
     upcoming,
     sent,
-    activeTab,
     scheduling,
     successPulse,
     lastAction,
@@ -139,7 +140,6 @@ function App() {
     handleDeleteMessage,
     handleClearSent,
     handleClearAll,
-    setActiveTab,
     setDate,
     setTime,
   } = useScheduler({
@@ -226,7 +226,7 @@ function App() {
           successPulse={successPulse}
           upcoming={upcoming}
           sent={sent}
-          activeTab={activeTab}
+          activeTab={workspaceActiveTab}
           revealingId={revealingId}
           cancelingIds={cancelingIds}
           sendingIds={sendingIds}
@@ -238,7 +238,7 @@ function App() {
           handleDeleteMessage={handleDeleteMessage}
           handleClearSent={handleClearSent}
           handleClearAll={handleClearAll}
-          setActiveTab={setActiveTab}
+          setActiveTab={setWorkspaceActiveTab}
           publishingDraft={publishingDraft}
           lastAction={lastAction}
           notification={notification}
@@ -310,7 +310,7 @@ function App() {
           time={time}
           upcoming={upcoming}
           sent={sent}
-          activeTab={activeTab}
+          activeTab={scheduleActiveTab}
           scheduling={scheduling}
           successPulse={successPulse}
           revealingId={revealingId}
@@ -325,7 +325,7 @@ function App() {
           handleDeleteMessage={handleDeleteMessage}
           handleClearSent={handleClearSent}
           handleClearAll={handleClearAll}
-          setActiveTab={setActiveTab}
+          setActiveTab={setScheduleActiveTab}
           setDate={setDate}
           setTime={setTime}
           onOpenSettings={() => {

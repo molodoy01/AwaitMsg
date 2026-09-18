@@ -132,6 +132,7 @@ export function WorkspaceTextStage({
   const scheduleMoreRef = useRef<HTMLDivElement>(null);
   const scheduleWhenRef = useRef<HTMLElement>(null);
   const scheduleRepeatRef = useRef<HTMLElement>(null);
+  const scheduleFlowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (mode === 'chat') {
@@ -164,10 +165,19 @@ export function WorkspaceTextStage({
   }, [mode]);
 
   useEffect(() => {
-    if (!scheduleRepeatOpen || repeatMode === 'none') return;
+    if (!scheduleRepeatOpen) return;
 
     requestAnimationFrame(() => {
-      scheduleRepeatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const flow = scheduleFlowRef.current;
+      const repeat = scheduleRepeatRef.current;
+      if (!flow || !repeat) return;
+
+      repeat.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (repeatMode === 'none') return;
+
+      window.requestAnimationFrame(() => {
+        flow.scrollTo({ top: flow.scrollHeight, behavior: 'smooth' });
+      });
     });
   }, [repeatMode, scheduleRepeatOpen]);
 
@@ -332,7 +342,7 @@ export function WorkspaceTextStage({
           <p className="workspace-page-schedule-timezone">{getLocalTimezoneLabel()}</p>
         </div>
 
-        <div className="workspace-page-schedule-flow">
+        <div ref={scheduleFlowRef} className="workspace-page-schedule-flow">
           <section ref={scheduleWhenRef} className="workspace-page-schedule-row-section is-open workspace-page-schedule-when-section">
             <div className="workspace-page-schedule-selection-row">
               <label className="workspace-page-schedule-selection-field">
@@ -442,14 +452,15 @@ export function WorkspaceTextStage({
               </label>
             </div>
 
-            <div className="workspace-page-schedule-row-section workspace-page-schedule-summary-row">
-              <div className="workspace-page-schedule-row-heading">
-                <span>Summary</span>
-                <strong>{scheduleSummaryLabel}</strong>
-              </div>
+          </section>
+
+          <div className="workspace-page-schedule-row-section workspace-page-schedule-summary-row">
+            <div className="workspace-page-schedule-row-heading">
+              <span>Summary</span>
+              <strong>{scheduleSummaryLabel}</strong>
               {repeatMode !== 'none' && <small>Starting {scheduleDateLabel}</small>}
             </div>
-          </section>
+          </div>
 
           <button
             type="button"
