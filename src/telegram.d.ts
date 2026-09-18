@@ -134,6 +134,7 @@ declare global {
             date: string;
             outgoing: boolean;
             senderName?: string;
+            entities?: Array<{ type: 'bold' | 'italic' | 'underline' | 'strikethrough' | 'text_url'; offset: number; length: number; url?: string }>;
             mediaType?: string;
             mediaName?: string;
             replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url?: string; callback_data?: string }>> };

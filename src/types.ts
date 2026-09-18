@@ -51,6 +51,7 @@ export interface PreviewHistoryMessage {
   date: string;
   outgoing: boolean;
   senderName?: string;
+  entities?: RichTextEntity[];
   mediaType?: string;
   mediaName?: string;
   media?: PreviewHistoryMedia;

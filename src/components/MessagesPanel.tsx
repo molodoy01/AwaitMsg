@@ -16,6 +16,8 @@ interface Props {
   onClearAll: () => void;
   cancelingIds: Set<string>;
   sendingIds: Set<string>;
+  showAllMessages?: boolean;
+  upcomingLabel?: string;
 }
 
 export function MessagesPanel({
@@ -32,6 +34,8 @@ export function MessagesPanel({
   onClearAll,
   cancelingIds,
   sendingIds,
+  showAllMessages = false,
+  upcomingLabel = 'Upcoming',
 }: Props) {
   const [showOlderUpcoming, setShowOlderUpcoming] = useState(false);
   const [showOlderSent, setShowOlderSent] = useState(false);
@@ -274,7 +278,7 @@ export function MessagesPanel({
           }`}
           onClick={() => onTabChange('upcoming')}
         >
-          Upcoming
+          {upcomingLabel}
           <span className="tab-count">
             {upcoming.length}
           </span>
@@ -347,7 +351,7 @@ export function MessagesPanel({
               ))}
             </div>
 
-            {olderUpcoming.length > 0 && (
+            {!showAllMessages && olderUpcoming.length > 0 && (
               <div className="upcoming-older-toggle-wrap">
                 <button
                   type="button"
@@ -359,7 +363,7 @@ export function MessagesPanel({
               </div>
             )}
 
-            {showOlderUpcoming && (
+            {(showAllMessages || showOlderUpcoming) && (
               <div className="message-timeline-group message-timeline-group-older">
                 {olderUpcoming.map((msg, i) => (
                   <MessageCard
@@ -414,7 +418,7 @@ export function MessagesPanel({
               ))}
             </div>
 
-            {olderSent.length > 0 && (
+            {!showAllMessages && olderSent.length > 0 && (
               <div className="upcoming-older-toggle-wrap">
                 <button
                   type="button"
@@ -426,7 +430,7 @@ export function MessagesPanel({
               </div>
             )}
 
-            {showOlderSent && (
+            {(showAllMessages || showOlderSent) && (
               <div className="message-timeline-group message-timeline-group-older">
                 {olderSent.map((msg, i) => (
                   <MessageCard

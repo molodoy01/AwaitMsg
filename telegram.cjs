@@ -1148,11 +1148,25 @@ async function getPreviewMedia(message) {
 
   if (media.kind === 'photo' || media.kind === 'video') {
     try {
-      const thumbnail = await message.downloadMedia({ thumb: 1 });
+      const useOriginalPhoto = media.kind === 'photo'
+        && (!result.size || result.size <= 8 * 1024 * 1024);
+      const downloadedMedia = await message.downloadMedia(
+        useOriginalPhoto ? undefined : { thumb: 1 },
+      );
 
-      if (thumbnail && (Buffer.isBuffer(thumbnail) || thumbnail instanceof Uint8Array)) {
+      if (downloadedMedia && (Buffer.isBuffer(downloadedMedia) || downloadedMedia instanceof Uint8Array)) {
         const mimeType = media.kind === 'photo' ? 'image/jpeg' : 'video/jpeg';
-        result.thumbnailDataUrl = `data:${mimeType};base64,${Buffer.from(thumbnail).toString('base64')}`;
+        const dataUrl = `data:${mimeType};base64,${Buffer.from(downloadedMedia).toString('base64')}`;
+        if (useOriginalPhoto) {
+          result.dataUrl = dataUrl;
+        } else {
+          result.thumbnailDataUrl = dataUrl;
+        }
+      } else if (media.kind === 'photo') {
+        const thumbnail = await message.downloadMedia({ thumb: 1 });
+        if (thumbnail && (Buffer.isBuffer(thumbnail) || thumbnail instanceof Uint8Array)) {
+          result.thumbnailDataUrl = `data:image/jpeg;base64,${Buffer.from(thumbnail).toString('base64')}`;
+        }
       }
     } catch (error) {
       console.error('Telegram media thumbnail unavailable:', error?.code || error?.name || 'unknown');
@@ -1220,6 +1234,20 @@ async function getChatHistoryInternal(chatId, limit = 50) {
         date: Number.isNaN(rawDate.getTime()) ? new Date(0).toISOString() : rawDate.toISOString(),
         outgoing: message.out === true,
         senderName: getEntityDisplayName(message.sender),
+        entities: (message.entities || []).flatMap((entity) => {
+          const typeByClassName = {
+            MessageEntityBold: 'bold',
+            MessageEntityItalic: 'italic',
+            MessageEntityUnderline: 'underline',
+            MessageEntityStrike: 'strikethrough',
+            MessageEntityTextUrl: 'text_url',
+          };
+          const entityType = entity.className || entity.constructor?.name;
+          const type = typeByClassName[entityType];
+          return type && Number.isInteger(entity.offset) && Number.isInteger(entity.length)
+            ? [{ type, offset: entity.offset, length: entity.length, ...(type === 'text_url' && entity.url ? { url: entity.url } : {}) }]
+            : [];
+        }),
         mediaType: message.media?.className || '',
         mediaName: message.file?.name || '',
         media: await getPreviewMedia(message),

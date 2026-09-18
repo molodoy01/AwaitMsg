@@ -164,7 +164,7 @@ export function WorkspaceTextStage({
   }, [mode]);
 
   useEffect(() => {
-    if (!scheduleRepeatOpen || (repeatMode !== 'weekly' && repeatMode !== 'biweekly')) return;
+    if (!scheduleRepeatOpen || repeatMode === 'none') return;
 
     requestAnimationFrame(() => {
       scheduleRepeatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -441,6 +441,14 @@ export function WorkspaceTextStage({
                 </span>
               </label>
             </div>
+
+            <div className="workspace-page-schedule-row-section workspace-page-schedule-summary-row">
+              <div className="workspace-page-schedule-row-heading">
+                <span>Summary</span>
+                <strong>{scheduleSummaryLabel}</strong>
+              </div>
+              {repeatMode !== 'none' && <small>Starting {scheduleDateLabel}</small>}
+            </div>
           </section>
 
           <button
@@ -475,7 +483,6 @@ export function WorkspaceTextStage({
               </div>}
             </section>
 
-            <section className="workspace-page-schedule-row-section workspace-page-schedule-summary-row"><div className="workspace-page-schedule-row-heading"><span>Summary</span><strong>{scheduleSummaryLabel}</strong></div>{repeatMode !== 'none' && <small>Starting {scheduleDateLabel}</small>}</section>
           </div>}
         </div>
 

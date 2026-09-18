@@ -1,3 +1,4 @@
+import { ImagePlus, MessageCircle } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Chat, PreviewChatHistory, RichTextEntity } from '@/types';
@@ -12,6 +13,12 @@ type PreviewAttachment = {
 };
 
 type WallpaperTheme = 'telegram' | 'graphite' | 'custom';
+
+export type ChatWallpaper = {
+  theme: WallpaperTheme;
+  image: string;
+  accent: string;
+};
 
 const CHAT_WALLPAPER_STORAGE_KEY = 'awaitmsg-chat-preview-wallpaper';
 
@@ -32,6 +39,9 @@ type ChatPreviewStandProps = {
   chatListOpen: boolean;
   onToggleChatList: () => void;
   onSelectChat: (chat: Chat) => void;
+  onWallpaperChange?: (wallpaper: ChatWallpaper) => void;
+  rightPanelMode?: 'preview' | 'queue';
+  onRightPanelModeChange?: (mode: 'preview' | 'queue') => void;
 };
 
 type HistoryGroup = {
@@ -44,6 +54,7 @@ type SavedWallpaper = {
   theme: WallpaperTheme;
   image: string;
   accent: string;
+  wallpapers?: string[];
 };
 
 function loadSavedWallpaper(): SavedWallpaper {
@@ -56,6 +67,9 @@ function loadSavedWallpaper(): SavedWallpaper {
       theme: saved.theme === 'custom' ? 'custom' : saved.theme === 'graphite' ? 'graphite' : 'telegram',
       image: typeof saved.image === 'string' ? saved.image : '',
       accent: typeof saved.accent === 'string' ? saved.accent : '',
+      wallpapers: Array.isArray(saved.wallpapers)
+        ? saved.wallpapers.filter((image): image is string => typeof image === 'string' && image.length > 0)
+        : typeof saved.image === 'string' && saved.image ? [saved.image] : [],
     };
   } catch {
     return { theme: 'telegram', image: '', accent: '' };
@@ -96,14 +110,6 @@ function readImageAccent(dataUrl: string): Promise<string> {
   });
 }
 
-function getColorLuminance(color: string) {
-  const channels = color.match(/\d+/g)?.map(Number);
-  if (!channels || channels.length < 3) return 0.35;
-
-  const [red, green, blue] = channels.slice(0, 3).map((channel) => channel / 255);
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-}
-
 function toFileUrl(filePath: string) {
   const normalizedPath = filePath.replace(/\\/g, '/');
   const encodedPath = normalizedPath
@@ -130,9 +136,9 @@ function renderHistoryMedia(message: PreviewChatHistory['messages'][number]) {
   if (!media) return null;
 
   if (media.kind === 'photo' || media.kind === 'video') {
-    return media.thumbnailDataUrl ? (
+    return media.dataUrl || media.thumbnailDataUrl ? (
       <div className="chat-preview-history-media-frame">
-        <img src={media.thumbnailDataUrl} alt={media.name || 'Telegram media'} />
+        <img loading="lazy" src={media.thumbnailDataUrl || media.dataUrl} alt={media.name || 'Telegram media'} />
         {media.kind === 'video' && <span className="chat-preview-play">▶</span>}
         {media.kind === 'video' && media.duration && (
           <span className="chat-preview-duration">{formatDuration(media.duration)}</span>
@@ -204,13 +210,16 @@ export function ChatPreviewStand({
   chatListOpen,
   onToggleChatList,
   onSelectChat,
+  onWallpaperChange,
 }: ChatPreviewStandProps) {
   const savedWallpaper = useMemo(loadSavedWallpaper, []);
   const [wallpaperTheme, setWallpaperTheme] = useState<WallpaperTheme>(savedWallpaper.theme);
   const [customWallpaperImage, setCustomWallpaperImage] = useState(savedWallpaper.image);
   const [lastUploadedWallpaper, setLastUploadedWallpaper] = useState(savedWallpaper.image);
+  const [uploadedWallpapers, setUploadedWallpapers] = useState<string[]>(savedWallpaper.wallpapers ?? []);
   const [wallpaperAccent, setWallpaperAccent] = useState(savedWallpaper.accent);
   const wallpaperFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [wallpaperPickerOpen, setWallpaperPickerOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -224,6 +233,25 @@ export function ChatPreviewStand({
   }, [lastUploadedWallpaper, wallpaperAccent, wallpaperTheme]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        CHAT_WALLPAPER_STORAGE_KEY,
+        JSON.stringify({ theme: wallpaperTheme, image: lastUploadedWallpaper, accent: wallpaperAccent, wallpapers: uploadedWallpapers }),
+      );
+    } catch {
+      // Keep the current session usable when storage is unavailable.
+    }
+  }, [lastUploadedWallpaper, uploadedWallpapers, wallpaperAccent, wallpaperTheme]);
+
+  useEffect(() => {
+    onWallpaperChange?.({
+      theme: wallpaperTheme,
+      image: customWallpaperImage,
+      accent: wallpaperAccent,
+    });
+  }, [customWallpaperImage, onWallpaperChange, wallpaperAccent, wallpaperTheme]);
+
+  useEffect(() => {
     if (!chatListOpen) return;
 
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -233,6 +261,17 @@ export function ChatPreviewStand({
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [chatListOpen, onToggleChatList]);
+
+  useEffect(() => {
+    if (!wallpaperPickerOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setWallpaperPickerOpen(false);
+    };
+
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [wallpaperPickerOpen]);
 
   const activePreviewHistory = previewHistory?.chat.id === selectedChat?.id
     ? previewHistory
@@ -265,7 +304,9 @@ export function ChatPreviewStand({
       if (typeof reader.result === 'string') {
         setCustomWallpaperImage(reader.result);
         setLastUploadedWallpaper(reader.result);
+        setUploadedWallpapers((current) => current.includes(reader.result as string) ? current : [...current, reader.result as string]);
         setWallpaperTheme('custom');
+        setWallpaperPickerOpen(false);
         void readImageAccent(reader.result).then(setWallpaperAccent);
       }
     });
@@ -273,36 +314,55 @@ export function ChatPreviewStand({
     event.target.value = '';
   };
 
-  const draftBubbleColor = wallpaperTheme === 'telegram'
-    ? 'rgba(49, 91, 98, 0.9)'
-    : wallpaperTheme === 'graphite'
-      ? 'rgba(61, 67, 73, 0.9)'
-      : wallpaperAccent
-        ? `color-mix(in srgb, ${wallpaperAccent} ${getColorLuminance(wallpaperAccent) > 0.62 ? 22 : 46}%, #14282c ${getColorLuminance(wallpaperAccent) > 0.62 ? 78 : 54}%)`
-        : 'rgba(49, 70, 73, 0.9)';
+  const draftBubbleColor = wallpaperTheme === 'graphite'
+    ? 'rgba(36, 42, 46, 0.28)'
+    : wallpaperTheme === 'custom' && wallpaperAccent
+      ? 'rgba(20, 34, 38, 0.28)'
+      : 'rgba(35, 76, 82, 0.28)';
 
   return (
     <div className={`chat-preview-stand ${collapsed ? 'is-collapsed' : ''} ${chatListOpen ? 'is-chat-list-open' : ''}`}>
       <div className="chat-preview-toolbar">
         <span className="chat-preview-toolbar-label">Live chat preview</span>
-        <div className="chat-preview-wallpaper-picker" aria-label="Chat wallpaper">
-          <button type="button" className={`chat-preview-theme-swatch is-telegram ${wallpaperTheme === 'telegram' ? 'is-active' : ''}`} onClick={() => setWallpaperTheme('telegram')} aria-label="Default Telegram" title="Default Telegram" />
-          <button
-            type="button"
-            className={`chat-preview-theme-swatch is-last-upload ${wallpaperTheme === 'custom' && customWallpaperImage === lastUploadedWallpaper ? 'is-active' : ''}`}
-            onClick={() => {
-              if (!lastUploadedWallpaper) return;
-              setCustomWallpaperImage(lastUploadedWallpaper);
-              setWallpaperTheme('custom');
-            }}
-            aria-label="Last uploaded wallpaper"
-            title={lastUploadedWallpaper ? 'Last uploaded wallpaper' : 'No uploaded wallpaper yet'}
-            disabled={!lastUploadedWallpaper}
-          >
-            {lastUploadedWallpaper ? <img src={lastUploadedWallpaper} alt="" /> : '·'}
-          </button>
-          <button type="button" className="chat-preview-theme-swatch is-upload" onClick={() => wallpaperFileInputRef.current?.click()} aria-label="Upload wallpaper" title="Upload wallpaper">+</button>
-        </div>
+        {wallpaperPickerOpen && (
+          <div className="chat-preview-wallpaper-quick-picker" aria-label="Choose chat background">
+            <button
+              type="button"
+              className={`chat-preview-wallpaper-quick-choice is-default ${wallpaperTheme === 'telegram' ? 'is-selected' : ''}`}
+              onClick={() => { setWallpaperTheme('telegram'); setWallpaperPickerOpen(false); }}
+              aria-label="Default background"
+              title="Default background"
+            />
+            <button
+              type="button"
+              className={`chat-preview-wallpaper-quick-choice is-graphite ${wallpaperTheme === 'graphite' ? 'is-selected' : ''}`}
+              onClick={() => { setWallpaperTheme('graphite'); setWallpaperPickerOpen(false); }}
+              aria-label="Graphite background"
+              title="Graphite background"
+            />
+            {uploadedWallpapers.map((image, index) => (
+              <button
+                type="button"
+                key={image}
+                className={`chat-preview-wallpaper-quick-choice is-uploaded ${wallpaperTheme === 'custom' && customWallpaperImage === image ? 'is-selected' : ''}`}
+                onClick={() => { setCustomWallpaperImage(image); setLastUploadedWallpaper(image); setWallpaperTheme('custom'); setWallpaperPickerOpen(false); }}
+                aria-label={`Uploaded background ${index + 1}`}
+                title={`Uploaded background ${index + 1}`}
+              >
+                <img src={image} alt="" />
+              </button>
+            ))}
+            <button
+              type="button"
+              className="chat-preview-wallpaper-quick-choice is-add"
+              onClick={() => wallpaperFileInputRef.current?.click()}
+              aria-label="Add new background"
+              title="Add new background"
+            >
+              <ImagePlus size={15} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          </div>
+        )}
         <input
           ref={wallpaperFileInputRef}
           className="sr-only"
@@ -348,7 +408,16 @@ export function ChatPreviewStand({
           </div>
           <div className="chat-preview-header-actions">
             <button type="button" className="chat-preview-expand" onClick={onToggleChatList} aria-label={chatListOpen ? 'Hide chats' : 'Show chats'} title={chatListOpen ? 'Hide chats' : 'Show chats'}>
-              {chatListOpen ? '×' : '☰'}
+              {chatListOpen ? <span aria-hidden="true">×</span> : <MessageCircle size={17} strokeWidth={1.8} aria-hidden="true" />}
+            </button>
+            <button
+              type="button"
+              className="chat-preview-expand"
+              onClick={() => setWallpaperPickerOpen((current) => !current)}
+              aria-label="Choose chat background"
+              title="Choose chat background"
+            >
+              <ImagePlus size={17} strokeWidth={1.8} aria-hidden="true" />
             </button>
           </div>
         </header>
@@ -368,19 +437,24 @@ export function ChatPreviewStand({
               {historyGroups.map((group) => {
                 const firstMessage = group.messages[0];
                 const hasMedia = group.messages.some((message) => message.media);
-                const caption = group.messages.find((message) => message.text)?.text;
                 return (
-                  <article className={`chat-preview-bubble ${firstMessage.outgoing ? 'is-outgoing' : 'is-incoming'} ${hasMedia ? 'has-media' : ''}`} key={group.key}>
-                    {firstMessage.senderName && !firstMessage.outgoing && <strong className="chat-preview-sender">{firstMessage.senderName}</strong>}
+                  <article className={`chat-preview-history-entry ${firstMessage.outgoing ? 'is-outgoing' : 'is-incoming'} ${hasMedia ? 'has-media' : ''}`} key={group.key}>
+                    <div className="chat-preview-history-entry-head">
+                      <strong>{firstMessage.outgoing ? 'You' : firstMessage.senderName || previewTitle}</strong>
+                      <time>{new Date(firstMessage.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+                    </div>
                     {hasMedia && (
                       <div className={`chat-preview-history-grid ${group.messages.length > 1 ? 'is-album' : ''}`}>
                         {group.messages.map((message) => <div key={message.id}>{renderHistoryMedia(message)}</div>)}
                       </div>
                     )}
-                    {hasMedia
-                      ? caption && <div className="chat-preview-message">{caption}</div>
-                      : group.messages.filter((message) => message.text).map((message) => <div className="chat-preview-message" key={message.id}>{message.text}</div>)}
-                    <div className="chat-preview-meta">{new Date(firstMessage.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    {group.messages.filter((message) => message.text).map((message) => (
+                      <div
+                        className="chat-preview-message"
+                        key={message.id}
+                        dangerouslySetInnerHTML={{ __html: richTextToHtml(message.text, message.entities ?? []) }}
+                      />
+                    ))}
                     <InlineKeyboardPreview markup={group.messages.find((message) => message.replyMarkup)?.replyMarkup} />
                   </article>
                 );

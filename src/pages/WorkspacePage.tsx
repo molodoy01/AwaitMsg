@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
-import { ChatPreviewStand } from '@/components/ChatPreviewStand';
+import { ChatPreviewStand, type ChatWallpaper } from '@/components/ChatPreviewStand';
+import { MessagesPanel } from '@/components/MessagesPanel';
 import { Notification } from '@/components/Notification';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { WorkspaceTextStage } from '@/components/WorkspaceTextStage';
@@ -41,6 +42,11 @@ type WorkspacePageProps = {
   notification: import('@/types').NotificationState;
   closeNotification: () => void;
   upcoming: ScheduledMessage[];
+  sent: ScheduledMessage[];
+  activeTab: 'upcoming' | 'sent';
+  revealingId: string | null;
+  cancelingIds: Set<string>;
+  sendingIds: Set<string>;
   setDate: React.Dispatch<React.SetStateAction<string>>;
   setTime: React.Dispatch<React.SetStateAction<string>>;
   handleSchedule: (payload?: {
@@ -53,6 +59,11 @@ type WorkspacePageProps = {
     replyMarkup?: ReturnType<typeof toInlineKeyboardMarkup>;
   }, repeat?: ScheduleRepeatOptions) => void;
   handleSendDraftNow: (chat: Chat, text: string, attachments?: string[], entities?: RichTextEntity[], replyMarkup?: ReturnType<typeof toInlineKeyboardMarkup>) => Promise<boolean>;
+  handleSendNow: (message: ScheduledMessage) => void;
+  handleDeleteMessage: (message: ScheduledMessage) => void;
+  handleClearSent: () => void;
+  handleClearAll: () => void;
+  setActiveTab: React.Dispatch<React.SetStateAction<'upcoming' | 'sent'>>;
   publishingDraft: boolean;
   handleCancelMessage: (message: ScheduledMessage) => void;
 };
@@ -72,6 +83,7 @@ type WorkspaceAttachment = {
 
 const WORKSPACE_DRAFT_KEY = 'awaitmsg-workspace-draft';
 const PREVIEW_LAYOUT_KEY = 'awaitmsg-preview-layout';
+const CHAT_WALLPAPER_STORAGE_KEY = 'awaitmsg-chat-preview-wallpaper';
 
 type PreviewLayout = {
   collapsed?: boolean;
@@ -95,6 +107,22 @@ function readPreviewLayout(): PreviewLayout | null {
   }
 
   return null;
+}
+
+function readChatWallpaper(): ChatWallpaper {
+  try {
+    const raw = window.localStorage.getItem(CHAT_WALLPAPER_STORAGE_KEY);
+    if (!raw) return { theme: 'telegram', image: '', accent: '' };
+
+    const parsed = JSON.parse(raw) as Partial<ChatWallpaper>;
+    return {
+      theme: parsed.theme === 'custom' ? 'custom' : parsed.theme === 'graphite' ? 'graphite' : 'telegram',
+      image: typeof parsed.image === 'string' ? parsed.image : '',
+      accent: typeof parsed.accent === 'string' ? parsed.accent : '',
+    };
+  } catch {
+    return { theme: 'telegram', image: '', accent: '' };
+  }
 }
 
 function normalizeAttachments(value: unknown): WorkspaceAttachment[] {
@@ -150,10 +178,20 @@ export function WorkspacePage({
   notification,
   closeNotification,
   upcoming,
+  sent,
+  activeTab,
+  revealingId,
+  cancelingIds,
+  sendingIds,
   setDate,
   setTime,
   handleSchedule,
   handleSendDraftNow,
+  handleSendNow,
+  handleDeleteMessage,
+  handleClearSent,
+  handleClearAll,
+  setActiveTab,
   publishingDraft,
   handleCancelMessage,
 }: WorkspacePageProps) {
@@ -197,7 +235,7 @@ export function WorkspacePage({
     () => initialDraftRef.current?.savedAt ?? 'Not saved',
   );
   const [stageMode, setStageMode] = useState<'editor' | 'schedule' | 'template' | 'chat' | 'buttons'>('editor');
-  const [activeTab, setActiveTab] = useState<'editor' | 'templates' | 'buttons'>('editor');
+  const [, setStageTab] = useState<'editor' | 'templates' | 'buttons'>('editor');
   const [workspaceSelectedChats, setWorkspaceSelectedChats] = useState<Chat[]>([]);
   const workspaceChatOriginRef = useRef<Chat | null>(null);
   const [repeatMode, setRepeatMode] = useState<ScheduleRepeatOptions['mode']>('none');
@@ -210,9 +248,13 @@ export function WorkspacePage({
   const [previewHistoryLoading, setPreviewHistoryLoading] = useState(false);
   const [previewHistoryError, setPreviewHistoryError] = useState('');
   const [previewHistoryRetry, setPreviewHistoryRetry] = useState(0);
+  const [rightPanelMode, setRightPanelMode] = useState<'preview' | 'queue'>('preview');
+  const [chatWallpaper, setChatWallpaper] = useState<ChatWallpaper>(() => readChatWallpaper());
   const [chatListOpen, setChatListOpen] = useState(false);
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
+  const [publishAction, setPublishAction] = useState<'send' | 'schedule'>('send');
   const publishMenuRef = useRef<HTMLDivElement | null>(null);
+  const publishMenuToggleRef = useRef<HTMLButtonElement | null>(null);
   const [previewLayout, setPreviewLayout] = useState<PreviewLayout>(() => {
     const layout = initialPreviewLayoutRef.current ?? DEFAULT_PREVIEW_LAYOUT;
     return {
@@ -248,21 +290,27 @@ export function WorkspacePage({
     });
   };
 
+  const handlePreviewPanelModeChange = (mode: 'preview' | 'queue') => {
+    setRightPanelMode(mode);
+  };
+
   useEffect(() => {
     if (stageMode === 'editor') return;
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        event.preventDefault();
         if (stageMode === 'chat') {
           setSelectedChat(workspaceChatOriginRef.current);
           workspaceChatOriginRef.current = null;
           setWorkspaceSelectedChats([]);
         }
         setStageMode('editor');
-        setActiveTab('editor');
+        setStageTab('editor');
         setTemplateEditingId(null);
         setTemplateDraftName('');
         setTemplateDraftBody('');
+        (document.activeElement as HTMLElement | null)?.blur();
       }
     };
 
@@ -279,7 +327,12 @@ export function WorkspacePage({
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPublishMenuOpen(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setPublishMenuOpen(false);
+        publishMenuToggleRef.current?.focus();
+      }
     };
 
     document.addEventListener('mousedown', closePublishMenu);
@@ -291,7 +344,7 @@ export function WorkspacePage({
   }, [publishMenuOpen]);
 
   useEffect(() => {
-    if (stageMode !== 'editor') return;
+    if (stageMode !== 'editor' || publishMenuOpen) return;
 
     const returnToSchedule = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -306,7 +359,7 @@ export function WorkspacePage({
 
     document.addEventListener('keydown', returnToSchedule);
     return () => document.removeEventListener('keydown', returnToSchedule);
-  }, [chatListOpen, stageMode]);
+  }, [chatListOpen, publishMenuOpen, stageMode]);
 
   useEffect(() => {
     const draft: WorkspaceDraft = {
@@ -466,6 +519,42 @@ export function WorkspacePage({
     changeStageMode('schedule');
   };
 
+  const scheduleDraft = () => {
+    if (!selectedChat) return;
+
+    handleSchedule({
+      chatId: selectedChat.id,
+      message: draftBody,
+      date,
+      time,
+      attachments: attachments.map((attachment) => attachment.path).filter(Boolean),
+      entities: draftEntities,
+      replyMarkup: toInlineKeyboardMarkup(inlineButtons),
+    }, {
+      mode: repeatMode,
+      days: repeatDays,
+      occurrences: repeatOccurrences,
+    });
+  };
+
+  const choosePublishAction = (action: 'send' | 'schedule') => {
+    setPublishAction(action);
+    setPublishMenuOpen(false);
+  };
+
+  const handlePrimaryPublish = () => {
+    if (publishAction === 'schedule') {
+      if (stageMode === 'schedule') {
+        scheduleDraft();
+      } else {
+        openScheduleStage();
+      }
+      return;
+    }
+
+    sendDraftNow();
+  };
+
   const insertTextAtCursor = (insertedText: string) => {
     const editor = bodyInputRef.current;
     const selectionStart = Number(editor?.dataset.selectionStart);
@@ -562,7 +651,7 @@ export function WorkspacePage({
     workspaceChatOriginRef.current = null;
     setWorkspaceSelectedChats([]);
     setStageMode('editor');
-    setActiveTab('editor');
+    setStageTab('editor');
   };
 
   const completeChatSelection = () => {
@@ -580,7 +669,7 @@ export function WorkspacePage({
       setWorkspaceSelectedChats([]);
     }
     if (nextMode !== 'template') closeTemplateEditor();
-    setActiveTab(nextMode === 'template' ? 'templates' : nextMode === 'buttons' ? 'buttons' : 'editor');
+    setStageTab(nextMode === 'template' ? 'templates' : nextMode === 'buttons' ? 'buttons' : 'editor');
     setStageMode(nextMode);
   };
 
@@ -817,7 +906,7 @@ export function WorkspacePage({
                     onClick={() => {
                       if (stageMode === 'template') {
                         closeTemplateEditor();
-                        setActiveTab('editor');
+                        setStageTab('editor');
                         setStageMode('editor');
                       } else {
                         changeStageMode('template');
@@ -829,11 +918,13 @@ export function WorkspacePage({
                   </button>
                   <button
                     type="button"
-                    className={`workspace-page-mode-button ${activeTab === 'buttons' ? 'is-active' : ''}`}
-                    onClick={() => changeStageMode(stageMode === 'buttons' ? 'editor' : 'buttons')}
-                    aria-pressed={activeTab === 'buttons'}
+                    className={`workspace-page-mode-button workspace-page-mode-button-history ${rightPanelMode === 'queue' ? 'is-active' : ''}`}
+                    onClick={() => {
+                      setRightPanelMode((current) => current === 'queue' ? 'preview' : 'queue');
+                    }}
+                    aria-pressed={rightPanelMode === 'queue'}
                   >
-                    🔘 BUTTONS
+                    QUEUE / HISTORY
                   </button>
                 </div>
 
@@ -851,36 +942,57 @@ export function WorkspacePage({
                 <div className="workspace-page-submit-actions" ref={publishMenuRef}>
                   <button
                     type="button"
-                    className="workspace-page-publish-trigger"
+                    className="workspace-page-publish-trigger workspace-page-publish-main"
+                    onClick={handlePrimaryPublish}
+                    disabled={publishAction === 'schedule' ? !canSchedule : !selectedChat || !draftBody.trim() || publishingDraft || scheduling}
+                  >
+                    <span className="workspace-page-publish-trigger-main">
+                      {publishAction === 'schedule'
+                        ? (scheduling ? 'Scheduling…' : successPulse && lastAction === 'scheduled' ? 'Scheduled' : 'Schedule')
+                        : (publishingDraft ? 'Sending…' : successPulse && lastAction === 'sent' ? 'Sent' : 'Send now')}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-page-publish-trigger workspace-page-publish-menu-toggle"
+                    ref={publishMenuToggleRef}
                     onClick={() => setPublishMenuOpen((current) => !current)}
+                    aria-label="More send options"
                     aria-expanded={publishMenuOpen}
                     aria-haspopup="menu"
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setPublishMenuOpen(true);
+                      }
+                    }}
                   >
-                    <span className="workspace-page-publish-trigger-main">Publish</span>
                     <span className="workspace-page-publish-trigger-arrow" aria-hidden="true">▾</span>
                   </button>
 
                   {publishMenuOpen && (
-                    <div className="workspace-page-publish-menu" role="menu" aria-label="Publish action">
+                    <div className="workspace-page-publish-menu workspace-page-publish-menu-compact" role="menu" aria-label="Publish action">
                       <button
                         type="button"
-                        className="workspace-page-publish-option"
-                        onClick={sendDraftNow}
+                        className={`workspace-page-publish-option ${publishAction === 'send' ? 'is-selected' : ''}`}
+                        autoFocus={publishAction === 'send'}
+                        onClick={() => choosePublishAction('send')}
                         disabled={!selectedChat || !draftBody.trim() || publishingDraft || scheduling}
-                        role="menuitem"
+                        role="menuitemradio"
+                        aria-checked={publishAction === 'send'}
                       >
-                        <span>{publishingDraft ? 'Sending…' : successPulse && lastAction === 'sent' ? 'Sent' : 'Send now'}</span>
-                        <small>Publish immediately</small>
+                        <span>Send now</span>
                       </button>
                       <button
                         type="button"
-                        className="workspace-page-publish-option is-scheduled"
-                        onClick={openScheduleStage}
+                        className={`workspace-page-publish-option is-scheduled ${publishAction === 'schedule' ? 'is-selected' : ''}`}
+                        autoFocus={publishAction === 'schedule'}
+                        onClick={() => choosePublishAction('schedule')}
                         disabled={!canSchedule}
-                        role="menuitem"
+                        role="menuitemradio"
+                        aria-checked={publishAction === 'schedule'}
                       >
                         <span>{scheduling ? 'Scheduling…' : successPulse && lastAction === 'scheduled' ? 'Scheduled' : 'Schedule'}</span>
-                        <small>{scheduleSummary === 'Schedule' ? 'Choose date and time' : scheduleSummary}</small>
                       </button>
                     </div>
                   )}
@@ -919,27 +1031,62 @@ export function WorkspacePage({
             data-collapsed={previewCollapsed ? 'true' : 'false'}
             data-visible={previewLayout.visible === false ? 'false' : 'true'}
           >
-            <ChatPreviewStand
-              chats={chats}
-              selectedChat={selectedChat}
-              previewHistory={previewHistory}
-              previewHistoryLoading={previewHistoryLoading}
-              previewHistoryError={previewHistoryError}
-              previewHistoryRetry={() => setPreviewHistoryRetry((value) => value + 1)}
-              previewFeedRef={previewFeedRef}
-              draftText={previewText}
-              draftEntities={stageMode === 'template' && templateEditingId ? [] : draftEntities}
-              inlineButtons={inlineButtons}
-              attachments={attachments}
-              previewTime={previewTime}
-              collapsed={previewCollapsed}
-              chatListOpen={chatListOpen}
-              onToggleChatList={() => setChatListOpen((current) => !current)}
-              onSelectChat={(chat) => {
-                setSelectedChat(chat);
-                setChatListOpen(false);
-              }}
-            />
+            {rightPanelMode === 'queue' ? (
+              <div className="workspace-page-queue-panel">
+                <div className="workspace-page-queue-header">
+                  <span>Queue / history</span>
+                </div>
+                <div
+                  className={`workspace-page-queue-content theme-${chatWallpaper.theme}`}
+                  style={chatWallpaper.theme === 'custom' && chatWallpaper.image
+                    ? { backgroundImage: `url(${chatWallpaper.image})` }
+                    : undefined}
+                >
+                  <MessagesPanel
+                    upcoming={upcoming}
+                    sent={sent}
+                    upcomingLabel="Queue"
+                    assistantText=""
+                    revealingId={revealingId}
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    onCancel={handleCancelMessage}
+                    onSendNow={handleSendNow}
+                    onDelete={handleDeleteMessage}
+                    onClearSent={handleClearSent}
+                    onClearAll={handleClearAll}
+                    cancelingIds={cancelingIds}
+                    sendingIds={sendingIds}
+                    showAllMessages
+                  />
+                </div>
+              </div>
+            ) : (
+              <ChatPreviewStand
+                chats={chats}
+                selectedChat={selectedChat}
+                previewHistory={previewHistory}
+                previewHistoryLoading={previewHistoryLoading}
+                previewHistoryError={previewHistoryError}
+                previewHistoryRetry={() => setPreviewHistoryRetry((value) => value + 1)}
+                previewFeedRef={previewFeedRef}
+                draftText={previewText}
+                draftEntities={stageMode === 'template' && templateEditingId ? [] : draftEntities}
+                inlineButtons={inlineButtons}
+                attachments={attachments}
+                previewTime={previewTime}
+                collapsed={previewCollapsed}
+                chatListOpen={chatListOpen}
+                onToggleChatList={() => setChatListOpen((current) => !current)}
+                onSelectChat={(chat) => {
+                  setSelectedChat(chat);
+                  setChatListOpen(false);
+                }}
+                onWallpaperChange={setChatWallpaper}
+                rightPanelMode={rightPanelMode}
+                onRightPanelModeChange={handlePreviewPanelModeChange}
+              />
+            )}
           </section>
         </main>
       </div>

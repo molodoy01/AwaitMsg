@@ -1,5 +1,20 @@
 import type { ScheduledMessage } from '@/types';
 import { formatDateTime } from '@/lib/utils';
+import { richTextToHtml } from '@/lib/richText';
+
+function toFileUrl(filePath: string) {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const encodedPath = normalizedPath
+    .split('/')
+    .map((segment, index) => (index === 0 ? segment : encodeURIComponent(segment)))
+    .join('/');
+
+  return `file:///${encodedPath}`;
+}
+
+function isImageAttachment(filePath: string) {
+  return /\.(?:avif|gif|jpe?g|png|webp)$/i.test(filePath);
+}
 
 interface Props {
   message: ScheduledMessage;
@@ -89,8 +104,32 @@ export function MessageCard({
           )}
         </div>
 
-        <div className="message-preview">
-          {message.text}
+        <div className="message-post-preview">
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="message-attachments" aria-label="Attachments">
+              {message.attachments.map((attachment) => (
+                isImageAttachment(attachment) ? (
+                  <img
+                    key={attachment}
+                    className="message-attachment-image"
+                    src={toFileUrl(attachment)}
+                    alt=""
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="message-attachment-file" key={attachment}>
+                    <span aria-hidden="true">FILE</span>
+                    <strong>{attachment.split(/[\\/]/).pop() || attachment}</strong>
+                  </div>
+                )
+              ))}
+            </div>
+          )}
+
+          <div
+            className="message-preview"
+            dangerouslySetInnerHTML={{ __html: richTextToHtml(message.text, message.entities ?? []) }}
+          />
         </div>
       </div>
 
