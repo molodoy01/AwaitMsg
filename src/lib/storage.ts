@@ -1,7 +1,15 @@
 import type { ScheduledMessage, Template } from '@/types';
 
-const UPCOMING_KEY = 'awaitmsg_upcoming';
-const SENT_KEY = 'awaitmsg_sent';
+export type MessageHistoryScope = 'personal' | 'workspace';
+
+const UPCOMING_KEYS: Record<MessageHistoryScope, string> = {
+  personal: 'awaitmsg_upcoming',
+  workspace: 'awaitmsg_workspace_upcoming',
+};
+const SENT_KEYS: Record<MessageHistoryScope, string> = {
+  personal: 'awaitmsg_sent',
+  workspace: 'awaitmsg_workspace_sent',
+};
 const HIDDEN_CHATS_KEY = 'awaitmsg_hidden_chats';
 const CHATS_KEY = 'awaitmsg_chats';
 const TEMPLATES_KEY = 'awaitmsg_templates';
@@ -23,20 +31,20 @@ export function save<T>(key: string, data: T): void {
   }
 }
 
-export function loadUpcoming(): ScheduledMessage[] {
-  return load<ScheduledMessage[]>(UPCOMING_KEY, []);
+export function loadUpcoming(scope: MessageHistoryScope = 'personal'): ScheduledMessage[] {
+  return load<ScheduledMessage[]>(UPCOMING_KEYS[scope], []);
 }
 
-export function loadSent(): ScheduledMessage[] {
-  return load<ScheduledMessage[]>(SENT_KEY, []);
+export function loadSent(scope: MessageHistoryScope = 'personal'): ScheduledMessage[] {
+  return load<ScheduledMessage[]>(SENT_KEYS[scope], []);
 }
 
-export function saveUpcoming(messages: ScheduledMessage[]): void {
-  save(UPCOMING_KEY, messages);
+export function saveUpcoming(messages: ScheduledMessage[], scope: MessageHistoryScope = 'personal'): void {
+  save(UPCOMING_KEYS[scope], messages);
 }
 
-export function saveSent(messages: ScheduledMessage[]): void {
-  save(SENT_KEY, messages);
+export function saveSent(messages: ScheduledMessage[], scope: MessageHistoryScope = 'personal'): void {
+  save(SENT_KEYS[scope], messages);
 }
 
 export function loadHiddenChats(): string[] {

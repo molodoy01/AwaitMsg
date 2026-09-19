@@ -147,7 +147,9 @@ textarea:focus-visible {
   width: 118px;
 }
 
-.moment-controls input:hover {
+.moment-controls input:hover,
+.moment-controls input:focus-visible,
+.moment-controls input:active {
   background: transparent;
   box-shadow: inset 0 0 0 1px rgba(154, 168, 184, 0.3) !important;
 }

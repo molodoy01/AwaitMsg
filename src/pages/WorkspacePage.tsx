@@ -14,7 +14,7 @@ import { appendPreviewMessage } from '@/lib/preview';
 import { toInlineKeyboardMarkup } from '@/lib/inlineKeyboard';
 import type { InlineButtonRow } from '@/lib/inlineKeyboard';
 import { loadTemplates, saveTemplates } from '@/lib/storage';
-import type { ScheduleRepeatOptions } from '@/lib/scheduling';
+import { MAX_SCHEDULE_OCCURRENCES, type ScheduleRepeatOptions } from '@/lib/scheduling';
 import type {
   Chat,
   PreviewChatHistory,
@@ -74,16 +74,25 @@ type WorkspaceDraft = {
   attachments: WorkspaceAttachment[];
   savedAt: string;
   inlineButtons?: InlineButtonRow[];
+  date?: string;
+  time?: string;
+  repeatMode?: ScheduleRepeatOptions['mode'];
+  repeatDays?: string[];
+  repeatOccurrences?: number;
 };
 
 type WorkspaceAttachment = {
   name: string;
   path: string;
+  size?: number;
 };
 
 const WORKSPACE_DRAFT_KEY = 'awaitmsg-workspace-draft';
 const PREVIEW_LAYOUT_KEY = 'awaitmsg-preview-layout';
 const CHAT_WALLPAPER_STORAGE_KEY = 'awaitmsg-chat-preview-wallpaper';
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024;
+const MAX_ATTACHMENTS_TOTAL_SIZE = 200 * 1024 * 1024;
 
 type PreviewLayout = {
   collapsed?: boolean;
@@ -227,6 +236,7 @@ export function WorkspacePage({
   const [attachments, setAttachments] = useState<WorkspaceAttachment[]>(
     () => normalizeAttachments(initialDraftRef.current?.attachments),
   );
+  const [attachmentError, setAttachmentError] = useState('');
   const [inlineButtons, setInlineButtons] = useState<InlineButtonRow[]>(
     () => initialDraftRef.current?.inlineButtons ?? [],
   );
@@ -241,6 +251,7 @@ export function WorkspacePage({
   const [repeatMode, setRepeatMode] = useState<ScheduleRepeatOptions['mode']>('none');
   const [repeatDays, setRepeatDays] = useState<string[]>([]);
   const [repeatOccurrences, setRepeatOccurrences] = useState(5);
+  const scheduleDraftHydratedRef = useRef(false);
   const [templateEditingId, setTemplateEditingId] = useState<string | null>(null);
   const [templateDraftName, setTemplateDraftName] = useState('');
   const [templateDraftBody, setTemplateDraftBody] = useState('');
@@ -362,11 +373,30 @@ export function WorkspacePage({
   }, [chatListOpen, publishMenuOpen, stageMode]);
 
   useEffect(() => {
+    const savedDraft = initialDraftRef.current;
+    if (savedDraft?.date) setDate(savedDraft.date);
+    if (savedDraft?.time) setTime(savedDraft.time);
+    if (savedDraft?.repeatMode) setRepeatMode(savedDraft.repeatMode);
+    if (Array.isArray(savedDraft?.repeatDays)) setRepeatDays(savedDraft.repeatDays);
+    if (typeof savedDraft?.repeatOccurrences === 'number' && savedDraft.repeatOccurrences > 0) {
+      setRepeatOccurrences(Math.min(MAX_SCHEDULE_OCCURRENCES, Math.floor(savedDraft.repeatOccurrences)));
+    }
+    scheduleDraftHydratedRef.current = true;
+  }, [setDate, setTime]);
+
+  useEffect(() => {
+    if (!scheduleDraftHydratedRef.current) return;
+
     const draft: WorkspaceDraft = {
       body: draftBody,
       entities: draftEntities,
       attachments,
       inlineButtons,
+      date,
+      time,
+      repeatMode,
+      repeatDays,
+      repeatOccurrences,
       savedAt: new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -375,7 +405,7 @@ export function WorkspacePage({
 
     window.localStorage.setItem(WORKSPACE_DRAFT_KEY, JSON.stringify(draft));
     setSavedAt(draft.savedAt);
-  }, [draftBody, draftEntities, attachments, inlineButtons]);
+  }, [attachments, date, draftBody, draftEntities, inlineButtons, repeatDays, repeatMode, repeatOccurrences, time]);
 
   useEffect(() => {
     if (successPulse) {
@@ -690,13 +720,41 @@ export function WorkspacePage({
 
     if (!files.length) return;
 
+    const currentSize = attachments.reduce((total, attachment) => total + (attachment.size ?? 0), 0);
+    const acceptedFiles: File[] = [];
+    let nextSize = currentSize;
+    let nextError = '';
+
+    for (const file of files) {
+      if (attachments.length + acceptedFiles.length >= MAX_ATTACHMENTS) {
+        nextError = `Можно добавить не больше ${MAX_ATTACHMENTS} файлов.`;
+        break;
+      }
+
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        nextError = `${file.name}: размер файла не должен превышать 50 МБ.`;
+        continue;
+      }
+
+      if (nextSize + file.size > MAX_ATTACHMENTS_TOTAL_SIZE) {
+        nextError = 'Общий размер вложений не должен превышать 200 МБ.';
+        break;
+      }
+
+      acceptedFiles.push(file);
+      nextSize += file.size;
+    }
+
     setAttachments((current) => [
       ...current,
-      ...files.map((file) => ({
+      ...acceptedFiles.map((file) => ({
         name: file.name,
         path: window.telegram.getFilePath(file),
+        size: file.size,
       })),
     ]);
+
+    setAttachmentError(nextError);
 
     event.target.value = '';
   };
@@ -856,6 +914,7 @@ export function WorkspacePage({
                   ))}
                 </div>
               </div>
+              {attachmentError && <div role="alert" className="workspace-page-empty-attachments">{attachmentError}</div>}
 
               <div className="workspace-page-action-row workspace-page-schedule-row">
                 <div className="workspace-page-media-row">

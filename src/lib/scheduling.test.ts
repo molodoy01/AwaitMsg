@@ -7,6 +7,7 @@ import {
   findMatchingScheduledMessage,
   getPendingSchedules,
   getScheduleOccurrences,
+  MAX_SCHEDULE_OCCURRENCES,
 } from './scheduling';
 
 function createMemoryStorage() {
@@ -170,6 +171,14 @@ describe('Schedule recurrence dates', () => {
 
     expect(dates.map((date) => date.getDate())).toEqual([10, 11, 12]);
     expect(dates.every((date) => date.getHours() === 9 && date.getMinutes() === 30)).toBe(true);
+  });
+
+  it('caps repeat occurrences at the supported maximum', () => {
+    const start = new Date(2030, 0, 10, 9, 30);
+    const dates = getScheduleOccurrences(start, { mode: 'daily', occurrences: 20 });
+
+    expect(MAX_SCHEDULE_OCCURRENCES).toBe(15);
+    expect(dates).toHaveLength(15);
   });
 
   it('uses selected weekdays for a weekly series', () => {

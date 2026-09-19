@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { InlineButton, InlineButtonRow } from '@/lib/inlineKeyboard';
-import { createInlineButton, getInlineButtonError, MAX_INLINE_BUTTONS, MAX_INLINE_BUTTON_LABEL_LENGTH, normalizeInlineUrl } from '@/lib/inlineKeyboard';
+import { createInlineButton, getInlineButtonError, limitInlineRows, MAX_INLINE_BUTTONS, MAX_INLINE_BUTTON_LABEL_LENGTH, normalizeInlineUrl } from '@/lib/inlineKeyboard';
 import './InlineKeyboardBuilder.css';
 
 type InlineKeyboardBuilderProps = {
@@ -37,15 +37,23 @@ export function InlineKeyboardBuilder({ rows, onChange, open, onClose }: InlineK
   const [presetsOpen, setPresetsOpen] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const currentSectionRef = useRef<HTMLElement | null>(null);
-  const buttonCount = rows.reduce((total, row) => total + row.length, 0);
+  const limitedRows = limitInlineRows(rows);
+  const buttonCount = limitedRows.reduce((total, row) => total + row.length, 0);
+
+  useEffect(() => {
+    const rowsChanged = limitedRows.length !== rows.length
+      || limitedRows.some((row, index) => row.length !== rows[index]?.length || row.some((button, buttonIndex) => button !== rows[index]?.[buttonIndex]));
+    if (rowsChanged) onChange(limitedRows);
+  }, [onChange, rows, limitedRows]);
+
   const addButton = () => {
     if (buttonCount >= MAX_INLINE_BUTTONS) return;
-    onChange([...rows, [createInlineButton(`${Date.now()}-button`)]]);
+    onChange([...limitedRows, [createInlineButton(`${Date.now()}-button`)]].slice(0, MAX_INLINE_BUTTONS));
   };
 
   const updateButton = (rowIndex: number, buttonIndex: number, nextButton: InlineButton) => {
-    const nextRow = rows[rowIndex].map((button, index) => index === buttonIndex ? nextButton : button);
-    onChange(updateRow(rows, rowIndex, nextRow));
+    const nextRow = limitedRows[rowIndex].map((button, index) => index === buttonIndex ? nextButton : button);
+    onChange(updateRow(limitedRows, rowIndex, nextRow));
   };
 
   useEffect(() => {
@@ -67,14 +75,14 @@ export function InlineKeyboardBuilder({ rows, onChange, open, onClose }: InlineK
   }, [editorOpen]);
 
   const applyPreset = (preset: InlineKeyboardPreset) => {
-    onChange(preset.rows.map((row) => row.map((button) => ({ ...button, id: `${button.id}-${Date.now()}` }))));
+    onChange(limitInlineRows(preset.rows).map((row) => row.map((button) => ({ ...button, id: `${button.id}-${Date.now()}` }))));
   };
 
   const savePreset = () => {
     if (!rows.length) return;
 
     const name = `Inline set ${presets.length + 1}`;
-    const nextPresets = [...presets, { id: `${Date.now()}-preset`, name, rows }];
+    const nextPresets = [...presets, { id: `${Date.now()}-preset`, name, rows: limitedRows }];
     setPresets(nextPresets);
 
     try {
@@ -142,7 +150,7 @@ export function InlineKeyboardBuilder({ rows, onChange, open, onClose }: InlineK
               </button>
               {buttonCount > 0 && !editorOpen && (
                 <div className="inline-keyboard-active-summary" aria-label="Active buttons">
-                  {rows.flatMap((row) => row.map((button) => button.label.trim() || 'Unnamed button')).join(' · ')}
+                  {limitedRows.flatMap((row) => row.map((button) => button.label.trim() || 'Unnamed button')).join(' · ')}
                 </div>
               )}
             </section>
@@ -153,22 +161,23 @@ export function InlineKeyboardBuilder({ rows, onChange, open, onClose }: InlineK
                 <span className="inline-keyboard-section-note">Edit the current post</span>
               </div>
               <div className="inline-keyboard-current-list" aria-label="Current inline buttons">
-                {rows.flatMap((row, rowIndex) => row.map((button, buttonIndex) => {
+                {limitedRows.flatMap((row, rowIndex) => row.map((button, buttonIndex) => {
+                  const buttonNumber = limitedRows.slice(0, rowIndex).reduce((total, currentRow) => total + currentRow.length, 0) + buttonIndex + 1;
                     const error = getInlineButtonError(button);
                     return (
                       <div className={`inline-keyboard-button-editor ${error ? 'has-error' : ''}`} key={button.id}>
                         <div className="inline-keyboard-button-fields">
-                          <input value={button.label} maxLength={MAX_INLINE_BUTTON_LABEL_LENGTH} onChange={(event) => updateButton(rowIndex, buttonIndex, { ...button, label: event.target.value })} placeholder="Button text" aria-label={`Button ${buttonIndex + 1} text`} title="Text shown on the button" />
+                          <input value={button.label} maxLength={MAX_INLINE_BUTTON_LABEL_LENGTH} onChange={(event) => updateButton(rowIndex, buttonIndex, { ...button, label: event.target.value })} placeholder="Button text" aria-label={`Button ${buttonNumber} text`} title="Text shown on the button" />
                           <span className="inline-keyboard-action-arrow" aria-hidden="true">→</span>
-                          <input value={button.action.value} onChange={(event) => updateButton(rowIndex, buttonIndex, { ...button, action: { ...button.action, value: event.target.value } })} onBlur={() => { if (button.action.type === 'url') updateButton(rowIndex, buttonIndex, { ...button, action: { ...button.action, value: normalizeInlineUrl(button.action.value) } }); }} placeholder="https://..." aria-label={`Button ${buttonIndex + 1} link`} title="Where the button should open" />
-                          <button type="button" className="inline-keyboard-remove-button" onClick={() => onChange(row.length === 1 ? rows.filter((_, index) => index !== rowIndex) : updateRow(rows, rowIndex, row.filter((_, index) => index !== buttonIndex)))} aria-label="Remove button">✕</button>
+                          <input value={button.action.value} onChange={(event) => updateButton(rowIndex, buttonIndex, { ...button, action: { ...button.action, value: event.target.value } })} onBlur={() => { if (button.action.type === 'url') updateButton(rowIndex, buttonIndex, { ...button, action: { ...button.action, value: normalizeInlineUrl(button.action.value) } }); }} placeholder="https://..." aria-label={`Button ${buttonNumber} link`} title="Where the button should open" />
+                          <button type="button" className="inline-keyboard-remove-button" onClick={() => onChange(row.length === 1 ? limitedRows.filter((_, index) => index !== rowIndex) : updateRow(limitedRows, rowIndex, row.filter((_, index) => index !== buttonIndex)))} aria-label="Remove button">✕</button>
                         </div>
                         {error && <span className="inline-keyboard-error">{error}</span>}
                       </div>
                     );
                 }))}
               </div>
-              {!rows.length && <p className="inline-keyboard-presets-empty">No buttons added to this post yet.</p>}
+              {!limitedRows.length && <p className="inline-keyboard-presets-empty">No buttons added to this post yet.</p>}
             </div>}
           </section>
 

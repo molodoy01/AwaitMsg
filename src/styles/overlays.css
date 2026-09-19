@@ -239,6 +239,7 @@ textarea:active,
 .chat-option:focus,
 .chat-option:focus-visible,
 .chat-option:active {
+  outline: none !important;
   box-shadow: none !important;
 }
 

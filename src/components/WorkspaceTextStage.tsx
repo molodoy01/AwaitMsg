@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { CalendarDays, Clock, MessageCircle } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Chat, RichTextEntity, Template } from '@/types';
-import type { ScheduleRepeatOptions } from '@/lib/scheduling';
+import { MAX_SCHEDULE_OCCURRENCES, type ScheduleRepeatOptions } from '@/lib/scheduling';
 import { InlineKeyboardBuilder } from '@/components/InlineKeyboardBuilder';
 import type { InlineButtonRow } from '@/lib/inlineKeyboard';
 
@@ -316,7 +316,7 @@ export function WorkspaceTextStage({
     none: "Doesn't repeat",
     daily: 'Every day',
     weekly: `Every week${repeatDays.length ? ` · ${repeatDays.join(', ')}` : ''}`,
-    biweekly: 'Every 2 weeks',
+    biweekly: `Every 2 weeks${repeatDays.length ? ` · ${repeatDays.join(', ')}` : ''}`,
     monthly: `Every month${date ? ` · day ${new Date(`${date}T12:00:00`).getDate()}` : ''}`,
   }[repeatMode];
   const scheduleSummaryLabel = repeatMode === 'none'
@@ -490,7 +490,7 @@ export function WorkspaceTextStage({
               {scheduleRepeatOpen && <div className="workspace-page-schedule-repeat-menu">
                 {([['none', "Doesn't repeat"], ['daily', 'Every day'], ['weekly', 'Every week'], ['biweekly', 'Every 2 weeks'], ['monthly', 'Every month']] as const).map(([value, label]) => <button type="button" key={value} className={repeatMode === value ? 'is-selected' : ''} onClick={() => selectRepeatMode(value)}>{label}</button>)}
                 {(repeatMode === 'weekly' || repeatMode === 'biweekly') && <div className="workspace-page-weekday-list">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <button type="button" key={day} className={repeatDays.includes(day) ? 'is-selected' : ''} onClick={() => setRepeatDays((current) => current.includes(day) ? current.filter((item) => item !== day) : [...current, day])}>{day}</button>)}</div>}
-                {repeatMode !== 'none' && <label className="workspace-page-repeat-count"><span>Runs</span><select value={repeatOccurrences} onChange={(event) => setRepeatOccurrences(Number(event.target.value))}>{[2, 3, 5, 10, 20].map((count) => <option value={count} key={count}>{count} times</option>)}</select></label>}
+                {repeatMode !== 'none' && <label className="workspace-page-repeat-count"><span>Runs</span><select value={repeatOccurrences} onChange={(event) => setRepeatOccurrences(Math.min(MAX_SCHEDULE_OCCURRENCES, Math.max(1, Number(event.target.value))))}>{[2, 3, 5, 10, 15].map((count) => <option value={count} key={count}>{count} times</option>)}</select></label>}
               </div>}
             </section>
 

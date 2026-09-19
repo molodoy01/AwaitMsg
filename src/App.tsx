@@ -119,30 +119,28 @@ function App() {
   } = useAssistant({ chats });
 
   const {
-    date,
-    time,
-    upcoming,
-    sent,
-    scheduling,
-    successPulse,
-    lastAction,
-    revealingId,
-    cancelingIds,
-    sendingIds,
-    publishingDraft,
-    dateEditedRef,
-    timeEditedRef,
-    openPickerRef,
-    handleSchedule,
-    handleCancelMessage,
-    handleSendNow,
-    handleSendDraftNow,
-    handleDeleteMessage,
-    handleClearSent,
-    handleClearAll,
-    setDate,
-    setTime,
+    date: personalDate,
+    time: personalTime,
+    upcoming: personalUpcoming,
+    sent: personalSent,
+    scheduling: personalScheduling,
+    successPulse: personalSuccessPulse,
+    revealingId: personalRevealingId,
+    cancelingIds: personalCancelingIds,
+    sendingIds: personalSendingIds,
+    dateEditedRef: personalDateEditedRef,
+    timeEditedRef: personalTimeEditedRef,
+    openPickerRef: personalOpenPickerRef,
+    handleSchedule: handlePersonalSchedule,
+    handleCancelMessage: handlePersonalCancelMessage,
+    handleSendNow: handlePersonalSendNow,
+    handleDeleteMessage: handlePersonalDeleteMessage,
+    handleClearSent: handlePersonalClearSent,
+    handleClearAll: handlePersonalClearAll,
+    setDate: setPersonalDate,
+    setTime: setPersonalTime,
   } = useScheduler({
+    historyScope: 'personal',
     connected,
     selectedChat,
     chats,
@@ -152,6 +150,40 @@ function App() {
     setAssistantPrompt,
     setAssistantResponse,
     setAssistantIntent,
+  });
+
+  const {
+    date: workspaceDate,
+    time: workspaceTime,
+    upcoming: workspaceUpcoming,
+    sent: workspaceSent,
+    scheduling: workspaceScheduling,
+    successPulse: workspaceSuccessPulse,
+    lastAction: workspaceLastAction,
+    revealingId: workspaceRevealingId,
+    cancelingIds: workspaceCancelingIds,
+    sendingIds: workspaceSendingIds,
+    publishingDraft: workspacePublishingDraft,
+    handleSchedule: handleWorkspaceSchedule,
+    handleCancelMessage: handleWorkspaceCancelMessage,
+    handleSendNow: handleWorkspaceSendNow,
+    handleSendDraftNow: handleWorkspaceSendDraftNow,
+    handleDeleteMessage: handleWorkspaceDeleteMessage,
+    handleClearSent: handleWorkspaceClearSent,
+    handleClearAll: handleWorkspaceClearAll,
+    setDate: setWorkspaceDate,
+    setTime: setWorkspaceTime,
+  } = useScheduler({
+    historyScope: 'workspace',
+    connected,
+    selectedChat,
+    chats,
+    message: '',
+    showNotification,
+    setMessage: () => {},
+    setAssistantPrompt: () => {},
+    setAssistantResponse: () => {},
+    setAssistantIntent: () => {},
   });
 
   useEffect(() => {
@@ -220,30 +252,30 @@ function App() {
           removeModal={removeModal}
           setRemoveModal={setRemoveModal}
           confirmRemoveChat={confirmRemoveChat}
-          date={date}
-          time={time}
-          scheduling={scheduling}
-          successPulse={successPulse}
-          upcoming={upcoming}
-          sent={sent}
+          date={workspaceDate}
+          time={workspaceTime}
+          scheduling={workspaceScheduling}
+          successPulse={workspaceSuccessPulse}
+          upcoming={workspaceUpcoming}
+          sent={workspaceSent}
           activeTab={workspaceActiveTab}
-          revealingId={revealingId}
-          cancelingIds={cancelingIds}
-          sendingIds={sendingIds}
-          setDate={setDate}
-          setTime={setTime}
-          handleSchedule={handleSchedule}
-          handleSendDraftNow={handleSendDraftNow}
-          handleSendNow={handleSendNow}
-          handleDeleteMessage={handleDeleteMessage}
-          handleClearSent={handleClearSent}
-          handleClearAll={handleClearAll}
+          revealingId={workspaceRevealingId}
+          cancelingIds={workspaceCancelingIds}
+          sendingIds={workspaceSendingIds}
+          setDate={setWorkspaceDate}
+          setTime={setWorkspaceTime}
+          handleSchedule={handleWorkspaceSchedule}
+          handleSendDraftNow={handleWorkspaceSendDraftNow}
+          handleSendNow={handleWorkspaceSendNow}
+          handleDeleteMessage={handleWorkspaceDeleteMessage}
+          handleClearSent={handleWorkspaceClearSent}
+          handleClearAll={handleWorkspaceClearAll}
           setActiveTab={setWorkspaceActiveTab}
-          publishingDraft={publishingDraft}
-          lastAction={lastAction}
+          publishingDraft={workspacePublishingDraft}
+          lastAction={workspaceLastAction}
           notification={notification}
           closeNotification={closeNotification}
-          handleCancelMessage={handleCancelMessage}
+          handleCancelMessage={handleWorkspaceCancelMessage}
         />
       ) : route === '/settings' ? (
         renderSettingsPage()
@@ -306,28 +338,28 @@ function App() {
           handleRemoveGeminiKey={handleRemoveGeminiKey}
           handleToggleAssistant={handleToggleAssistant}
           handleAssistantSubmit={handleAssistantSubmit}
-          date={date}
-          time={time}
-          upcoming={upcoming}
-          sent={sent}
+          date={personalDate}
+          time={personalTime}
+          upcoming={personalUpcoming}
+          sent={personalSent}
           activeTab={scheduleActiveTab}
-          scheduling={scheduling}
-          successPulse={successPulse}
-          revealingId={revealingId}
-          cancelingIds={cancelingIds}
-          sendingIds={sendingIds}
-          dateEditedRef={dateEditedRef}
-          timeEditedRef={timeEditedRef}
-          openPickerRef={openPickerRef}
-          handleSchedule={handleSchedule}
-          handleCancelMessage={handleCancelMessage}
-          handleSendNow={handleSendNow}
-          handleDeleteMessage={handleDeleteMessage}
-          handleClearSent={handleClearSent}
-          handleClearAll={handleClearAll}
+          scheduling={personalScheduling}
+          successPulse={personalSuccessPulse}
+          revealingId={personalRevealingId}
+          cancelingIds={personalCancelingIds}
+          sendingIds={personalSendingIds}
+          dateEditedRef={personalDateEditedRef}
+          timeEditedRef={personalTimeEditedRef}
+          openPickerRef={personalOpenPickerRef}
+          handleSchedule={handlePersonalSchedule}
+          handleCancelMessage={handlePersonalCancelMessage}
+          handleSendNow={handlePersonalSendNow}
+          handleDeleteMessage={handlePersonalDeleteMessage}
+          handleClearSent={handlePersonalClearSent}
+          handleClearAll={handlePersonalClearAll}
           setActiveTab={setScheduleActiveTab}
-          setDate={setDate}
-          setTime={setTime}
+          setDate={setPersonalDate}
+          setTime={setPersonalTime}
           onOpenSettings={() => {
             setShowAuthForm(false);
             setIsConfirmingLogout(false);

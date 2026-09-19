@@ -2,8 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { Api } from 'teleproto';
 import { InlineKeyboard } from 'teleproto';
 import { prepareInlineKeyboard } from './telegram-inline-keyboard.cjs';
+import { normalizeFloodWaitError } from './telegram-errors.cjs';
 
 describe('MTProto inline keyboard transport construction', () => {
+  it('normalizes Telegram flood wait errors without retrying', () => {
+    const error = new Error('A wait of 12 seconds is required');
+    error.code = 'FLOOD_WAIT_12';
+
+    const normalized = normalizeFloodWaitError(error);
+
+    expect(normalized?.code).toBe('TELEGRAM_FLOOD_WAIT');
+    expect(normalized?.waitSeconds).toBe(12);
+    expect(normalized?.message).toContain('12 seconds');
+  });
+
   it('builds URL markup as ReplyInlineMarkup', () => {
     const markup = new InlineKeyboard().url('Open', 'https://example.com').build();
     expect(markup).toBeInstanceOf(Api.ReplyInlineMarkup);

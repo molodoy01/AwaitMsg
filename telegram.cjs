@@ -1,6 +1,7 @@
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
 const { fromTelegramInlineKeyboard, prepareInlineKeyboard } = require('./telegram-inline-keyboard.cjs');
+const { normalizeFloodWaitError } = require('./telegram-errors.cjs');
 const {
   loadAccountSecrets,
   saveAccountSecrets,
@@ -559,6 +560,9 @@ async function telegramRequest(request) {
   try {
     return await request();
   } catch (error) {
+    const floodWaitError = normalizeFloodWaitError(error);
+    if (floodWaitError) throw floodWaitError;
+
     if (!isInvalidTelegramSessionError(error)) {
       throw error;
     }

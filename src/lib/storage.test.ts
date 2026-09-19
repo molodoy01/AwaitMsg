@@ -107,4 +107,15 @@ describe('Upcoming storage', () => {
       'scheduled',
     ]);
   });
+
+  it('keeps personal and workspace histories in separate storage keys', () => {
+    const personalMessage = createMessage('personal-1', 'scheduled');
+    const workspaceMessage = createMessage('workspace-1', 'scheduled');
+
+    saveUpcoming([personalMessage], 'personal');
+    saveUpcoming([workspaceMessage], 'workspace');
+
+    expect(loadUpcoming('personal')).toEqual([personalMessage]);
+    expect(loadUpcoming('workspace')).toEqual([workspaceMessage]);
+  });
 });

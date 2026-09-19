@@ -33,6 +33,8 @@ export type ScheduleRepeatOptions = {
   occurrences: number;
 };
 
+export const MAX_SCHEDULE_OCCURRENCES = 15;
+
 const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function startOfDay(value: Date) {
@@ -62,7 +64,7 @@ export function getScheduleOccurrences(
   start: Date,
   options: ScheduleRepeatOptions
 ): Date[] {
-  const count = Math.max(1, Math.min(20, Math.floor(options.occurrences) || 1));
+  const count = Math.max(1, Math.min(MAX_SCHEDULE_OCCURRENCES, Math.floor(options.occurrences) || 1));
   if (options.mode === 'none' || count === 1) return [new Date(start)];
 
   const occurrences = [new Date(start)];

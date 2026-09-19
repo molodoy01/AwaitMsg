@@ -72,22 +72,38 @@ export function useChats({ connected }: { connected: boolean }) {
           return visibleChats[0] || null;
         });
 
-        void Promise.all(visibleChats.map(async (chat) => {
-          try {
-            const avatarResult = await window.telegram.getChatAvatar(chat.id);
-            const avatarDataUrl = avatarResult.success ? avatarResult.avatarDataUrl || '' : '';
-            if (!avatarDataUrl) return;
+        void Promise.all(
+          visibleChats.map(async (chat) => {
+            try {
+              const avatarResult = await window.telegram.getChatAvatar(chat.id);
+              const avatarDataUrl = avatarResult.success ? avatarResult.avatarDataUrl || '' : '';
+              return avatarDataUrl ? { id: chat.id, avatarDataUrl } : null;
+            } catch {
+              return null;
+            }
+          }),
+        ).then((avatars) => {
+          const avatarByChatId = new Map(
+            avatars
+              .filter((avatar): avatar is { id: string; avatarDataUrl: string } => Boolean(avatar))
+              .map((avatar) => [avatar.id, avatar.avatarDataUrl]),
+          );
+          if (avatarByChatId.size === 0) return;
 
-            setChats((current) => {
-              const updated = current.map((item) => item.id === chat.id ? { ...item, avatarDataUrl } : item);
-              saveChats(updated);
-              return updated;
-            });
-            setSelectedChat((current) => current?.id === chat.id ? { ...current, avatarDataUrl } : current);
-          } catch {
-            // Keep the chat visible when its avatar is unavailable.
-          }
-        }));
+          const updatedChats = visibleChats.map((chat) => {
+            const avatarDataUrl = avatarByChatId.get(chat.id);
+            return avatarDataUrl ? { ...chat, avatarDataUrl } : chat;
+          });
+
+          setChats(updatedChats);
+          saveChats(updatedChats);
+          setSelectedChat((current) => {
+            if (!current) return current;
+
+            const avatarDataUrl = avatarByChatId.get(current.id);
+            return avatarDataUrl ? { ...current, avatarDataUrl } : current;
+          });
+        });
 
       })
       .catch(() => {

@@ -54,20 +54,29 @@ export function isInlineButtonValid(button: InlineButton): boolean {
   return getInlineButtonError(button) === '';
 }
 
+export function limitInlineRows(rows: InlineButtonRow[]): InlineButtonRow[] {
+  const limitedRows: InlineButtonRow[] = [];
+  let buttonCount = 0;
+
+  for (const row of rows) {
+    const remaining = MAX_INLINE_BUTTONS - buttonCount;
+    if (remaining <= 0) break;
+
+    const limitedRow = row.slice(0, Math.min(MAX_INLINE_BUTTONS_PER_ROW, remaining));
+    if (limitedRow.length === 0) continue;
+
+    limitedRows.push(limitedRow);
+    buttonCount += limitedRow.length;
+  }
+
+  return limitedRows;
+}
+
 export function toInlineKeyboardMarkup(rows: InlineButtonRow[]): InlineKeyboardMarkup | undefined {
   const validRows = rows
     .map((row) => row.filter(isInlineButtonValid))
     .filter((row) => row.length > 0);
-  const limitedRows: InlineButtonRow[] = [];
-  let buttonCount = 0;
-
-  for (const row of validRows) {
-    const remaining = MAX_INLINE_BUTTONS - buttonCount;
-    if (remaining <= 0) break;
-    const limitedRow = row.slice(0, Math.min(MAX_INLINE_BUTTONS_PER_ROW, remaining));
-    limitedRows.push(limitedRow);
-    buttonCount += limitedRow.length;
-  }
+  const limitedRows = limitInlineRows(validRows);
 
   if (limitedRows.length === 0) return undefined;
 

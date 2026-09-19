@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getInlineButtonError,
+  limitInlineRows,
   normalizeInlineUrl,
   toInlineKeyboardMarkup,
   type InlineButtonRow,
@@ -75,5 +76,18 @@ describe('Inline keyboard', () => {
     })));
     const markup = toInlineKeyboardMarkup(rows);
     expect(markup?.inline_keyboard.flat()).toHaveLength(100);
+  });
+
+  it('limits rows to eight buttons and the whole grid to 100 buttons', () => {
+    const rows = Array.from({ length: 13 }, (_, rowIndex) => Array.from({ length: 9 }, (_, buttonIndex) => ({
+      id: `${rowIndex}-${buttonIndex}`,
+      label: `Button ${rowIndex}-${buttonIndex}`,
+      action: { type: 'callback' as const, value: `${rowIndex}-${buttonIndex}` },
+    })));
+
+    const limitedRows = limitInlineRows(rows);
+
+    expect(limitedRows.every((row) => row.length <= 8)).toBe(true);
+    expect(limitedRows.flat()).toHaveLength(100);
   });
 });
