@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { CalendarDays, Clock } from 'lucide-react';
 import { Notification } from '@/components/Notification';
@@ -170,8 +172,113 @@ export function SchedulePage(props: SchedulePageProps) {
   } = props;
 
   const showTopbar = shouldShowTopbar({ connected, signedOut });
+  const datePickerRef = useRef<HTMLInputElement>(null);
+  const timePickerRef = useRef<SVGSVGElement>(null);
+  const timeMenuRef = useRef<HTMLDivElement>(null);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [manualTime, setManualTime] = useState(time);
+  const [timeMenuPosition, setTimeMenuPosition] = useState({ top: 0, left: 0 });
   const [dateYear, dateMonth, dateDay] = date.split('-');
   const [timeHours, timeMinutes] = time.split(':');
+
+  const togglePicker = (kind: 'date', pickerRef: MutableRefObject<HTMLInputElement | null>) => {
+    const picker = pickerRef.current;
+    if (!picker) return;
+
+    if (openPickerRef.current === kind) {
+      picker.blur();
+      openPickerRef.current = null;
+      return;
+    }
+
+    picker.showPicker?.();
+    openPickerRef.current = kind;
+  };
+
+  useEffect(() => {
+    if (!timePickerOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!timePickerRef.current?.contains(event.target as Node) && !timeMenuRef.current?.contains(event.target as Node)) {
+        setTimePickerOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTimePickerOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [timePickerOpen]);
+
+  useLayoutEffect(() => {
+    if (!timePickerOpen) return;
+
+    const updateTimeMenuPosition = () => {
+      const trigger = timePickerRef.current?.getBoundingClientRect();
+      const menu = timeMenuRef.current;
+      if (!trigger || !menu) return;
+
+      setTimeMenuPosition({
+        top: Math.min(trigger.bottom + 6, window.innerHeight - menu.offsetHeight - 12),
+        left: Math.max(12, Math.min(trigger.left - 160, window.innerWidth - menu.offsetWidth - 12)),
+      });
+    };
+
+    updateTimeMenuPosition();
+    window.addEventListener('resize', updateTimeMenuPosition);
+    return () => window.removeEventListener('resize', updateTimeMenuPosition);
+  }, [timePickerOpen]);
+
+  const openTimePicker = () => {
+    setManualTime(time);
+    setTimePickerOpen((current) => !current);
+  };
+
+  const updateManualTimePart = (part: 'hours' | 'minutes', value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 2);
+    const [currentHours, currentMinutes] = manualTime.split(':');
+    const nextHours = part === 'hours' ? digits : currentHours;
+    const nextMinutes = part === 'minutes' ? digits : currentMinutes;
+    const nextValue = `${nextHours}:${nextMinutes}`;
+    setManualTime(nextValue);
+
+    if (nextHours.length === 2 && nextMinutes.length === 2) {
+      const hours = Number(nextHours);
+      const minutes = Number(nextMinutes);
+      if (hours < 24 && minutes < 60) {
+        timeEditedRef.current = true;
+        setTime(nextValue);
+      }
+    }
+  };
+
+  const updateDatePart = (part: 'day' | 'month' | 'year', value: string) => {
+    const digits = value.replace(/\D/g, '');
+    const nextYear = part === 'year' ? digits : dateYear;
+    const nextMonth = part === 'month' ? digits : dateMonth;
+    const nextDay = part === 'day' ? digits : dateDay;
+
+    if (part === 'year' && digits.length > 4) return;
+    if (part !== 'year' && digits.length > 2) return;
+
+    setDate(`${nextYear}-${nextMonth}-${nextDay}`);
+    dateEditedRef.current = true;
+  };
+
+  const updateTimePart = (part: 'hours' | 'minutes', value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length > 2) return;
+
+    const nextHours = part === 'hours' ? digits : timeHours;
+    const nextMinutes = part === 'minutes' ? digits : timeMinutes;
+    setTime(`${nextHours}:${nextMinutes}`);
+    timeEditedRef.current = true;
+  };
 
   return (
     <>
@@ -541,20 +648,96 @@ export function SchedulePage(props: SchedulePageProps) {
               <div className="field moment-field">
                 <div className="schedule-row">
                   <div className="moment-controls">
-                    <div className="moment-date-display" aria-hidden="true">
-                      <CalendarDays className="moment-date-icon" aria-hidden="true" size={18} strokeWidth={1.8} />
-                      <span className="moment-day">{dateDay}</span>
+                    <div className="moment-date-display">
+                      <CalendarDays className="moment-date-icon" aria-hidden="true" size={18} strokeWidth={1.8} onClick={() => togglePicker('date', datePickerRef)} />
+                      <input className="moment-segment moment-day" value={dateDay} inputMode="numeric" maxLength={2} aria-label="Day" onChange={(event) => updateDatePart('day', event.target.value)} />
                       <span className="moment-date-separator">/</span>
-                      <span className="moment-month">{dateMonth}</span>
+                      <input className="moment-segment moment-month" value={dateMonth} inputMode="numeric" maxLength={2} aria-label="Month" onChange={(event) => updateDatePart('month', event.target.value)} />
                       <span className="moment-date-separator">/</span>
-                      <span className="moment-year">{dateYear}</span>
+                      <input className="moment-segment moment-year" value={dateYear} inputMode="numeric" maxLength={4} aria-label="Year" onChange={(event) => updateDatePart('year', event.target.value)} />
                     </div>
 
-                    <div className="moment-time-display" aria-hidden="true">
-                      <Clock className="moment-time-icon" aria-hidden="true" size={18} strokeWidth={1.8} />
-                      <span>{timeHours}</span>
-                      <span>{timeMinutes}</span>
+                    <div className="moment-time-display">
+                      <Clock ref={timePickerRef} className="moment-time-icon" aria-hidden="true" size={18} strokeWidth={1.8} onClick={openTimePicker} />
+                      <input className="moment-segment moment-time-hours" value={timeHours} inputMode="numeric" maxLength={2} aria-label="Hours" onChange={(event) => updateTimePart('hours', event.target.value)} />
+                      <span className="moment-time-separator" aria-hidden="true">:</span>
+                      <input className="moment-segment moment-time-minutes" value={timeMinutes} inputMode="numeric" maxLength={2} aria-label="Minutes" onChange={(event) => updateTimePart('minutes', event.target.value)} />
                     </div>
+
+                    {timePickerOpen && createPortal(
+                      <div
+                        ref={timeMenuRef}
+                        className="start-screen-time-menu"
+                        style={timeMenuPosition}
+                        role="listbox"
+                        aria-label="Choose time"
+                      >
+                        <label className="start-screen-time-manual">
+                          <span>Manual time</span>
+                          <span className="start-screen-time-manual-fields">
+                            <input
+                              type="text"
+                              value={manualTime.split(':')[0]}
+                              inputMode="numeric"
+                              maxLength={2}
+                              aria-label="Hours"
+                              onChange={(event) => updateManualTimePart('hours', event.target.value)}
+                            />
+                            <b aria-hidden="true">:</b>
+                            <input
+                              type="text"
+                              value={manualTime.split(':')[1]}
+                              inputMode="numeric"
+                              maxLength={2}
+                              aria-label="Minutes"
+                              onChange={(event) => updateManualTimePart('minutes', event.target.value)}
+                            />
+                          </span>
+                        </label>
+                        <select
+                          className="start-screen-time-list"
+                          aria-label="Choose time"
+                          size={6}
+                          value={`${time.slice(0, 2)}:00`}
+                          onChange={(event) => {
+                            timeEditedRef.current = true;
+                            setTime(event.target.value);
+                            setManualTime(event.target.value);
+                            setTimePickerOpen(false);
+                          }}
+                        >
+                          {Array.from({ length: 24 }, (_, hour) => {
+                            const option = `${String(hour).padStart(2, '0')}:00`;
+                            return <option key={option} value={option}>{option}</option>;
+                          })}
+                        </select>
+                      </div>,
+                      document.body,
+                    )}
+
+                    <input
+                      ref={datePickerRef}
+                      className="moment-native-picker moment-native-date-picker"
+                      type="date"
+                      value={date}
+                      aria-label="Choose date"
+                      onChange={(event) => {
+                        dateEditedRef.current = true;
+                        openPickerRef.current = null;
+                        setDate(event.target.value);
+                      }}
+                    />
+                    <input
+                      className="moment-native-picker moment-native-time-picker"
+                      type="time"
+                      value={time}
+                      aria-label="Choose time"
+                      onChange={(event) => {
+                        timeEditedRef.current = true;
+                        openPickerRef.current = null;
+                        setTime(event.target.value);
+                      }}
+                    />
                   </div>
                 </div>
               </div>

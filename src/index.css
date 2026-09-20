@@ -112,7 +112,7 @@ body:has(.auth-panel) {
   width: 100vw;
   height: 1px;
   background: rgba(154, 168, 184, 0.12);
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% + 14px));
   pointer-events: none;
 }
 
@@ -1554,7 +1554,7 @@ body:has(.auth-panel) {
 .assistant-thinking-dots {
   display: flex;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   margin-top: 18px;
   min-height: 6px;
 }
@@ -1981,12 +1981,56 @@ textarea:focus-visible {
   position: relative;
   display: block;
   width: 100%;
-  min-height: 205px;
+  min-height: 232px;
 }
 
 .moment-date-display,
 .moment-time-display {
+  pointer-events: auto;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.moment-segment {
+  width: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.moment-segment:focus {
+  background: rgba(193, 203, 214, 0.08);
+  border-radius: 3px;
+}
+
+.moment-native-picker {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  width: 100%;
+  opacity: 0;
   pointer-events: none;
+}
+
+.moment-native-date-picker {
+  top: 0;
+  height: 90px;
+  color-scheme: dark;
+  accent-color: #25404b;
+}
+
+.moment-native-time-picker {
+  top: 105px;
+  height: 100px;
 }
 
 .moment-date-icon,
@@ -1994,6 +2038,12 @@ textarea:focus-visible {
   flex-shrink: 0;
   color: rgba(193, 203, 214, 0.72);
   opacity: 0.9;
+  cursor: pointer;
+}
+
+.moment-time-icon {
+  margin-left: 0;
+  transform: translateX(-7px);
 }
 
 .moment-date-display {
@@ -2004,7 +2054,7 @@ textarea:focus-visible {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   width: max-content;
   max-width: 100%;
   color: rgba(232, 237, 242, 0.9);
@@ -2013,19 +2063,58 @@ textarea:focus-visible {
   line-height: 1;
   letter-spacing: -0.045em;
   font-variant-numeric: tabular-nums;
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% + 14px));
+  padding: 5px 8px;
+  border-radius: 6px;
+  transition: background-color 0.16s ease;
+}
+
+.moment-date-display:hover,
+.moment-date-display:focus-within,
+.moment-time-display:hover,
+.moment-time-display:focus-within {
+  background-color: rgba(193, 203, 214, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(193, 203, 214, 0.16), 0 7px 18px rgba(0, 0, 0, 0.12);
 }
 
 .moment-day,
 .moment-month,
 .moment-year {
   font-family: "Segoe UI Light", "Helvetica Neue", Arial, sans-serif;
-  font-size: clamp(20px, 2.2vw, 34px);
+  font-size: clamp(17px, 1.7vw, 26px);
   line-height: 1;
   font-weight: 300;
   letter-spacing: -0.04em;
   color: rgba(237, 241, 245, 0.82);
   font-variant-numeric: tabular-nums;
+}
+
+.moment-day,
+.moment-month {
+  width: 2ch;
+}
+
+.moment-year {
+  width: 4ch;
+}
+
+.moment-date-display .moment-segment {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+}
+
+.moment-date-display .moment-day,
+.moment-date-display .moment-month {
+  width: 3ch;
+  flex: 0 0 3ch;
+}
+
+.moment-date-display .moment-year {
+  width: 5.5ch;
+  flex: 0 0 5.5ch;
 }
 
 .moment-date-separator {
@@ -2042,12 +2131,13 @@ textarea:focus-visible {
 
 .moment-time-display {
   position: absolute;
+  z-index: 1;
   top: 118px;
   left: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 0;
   width: max-content;
   max-width: 100%;
   color: rgba(238, 242, 246, 0.8);
@@ -2057,27 +2147,133 @@ textarea:focus-visible {
   line-height: 0.9;
   letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums;
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% - 4px));
+  padding: 6px 9px;
+  border-radius: 6px;
+  transition: background-color 0.16s ease;
 }
 
-.moment-controls input[type="date"],
-.moment-controls input[type="time"] {
-  position: absolute;
-  z-index: 2;
+.moment-time-display .moment-segment {
+  width: 2.6ch;
+  flex: 0 0 2.6ch;
+  height: 1em;
+  min-height: 1em;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+}
+
+.moment-time-display .moment-time-minutes {
+  margin-left: 0;
+}
+
+.moment-time-separator {
+  color: rgba(193, 203, 214, 0.72);
+  font: inherit;
+  line-height: inherit;
+}
+
+.moment-time-display .moment-segment:focus,
+.moment-time-display .moment-segment:focus-visible {
+  background: rgba(193, 203, 214, 0.08);
+  border-radius: 3px;
+  box-shadow: none !important;
+}
+
+.moment-date-display .moment-segment,
+.moment-time-display .moment-segment {
+  box-shadow: inset 0 -1px 0 rgba(193, 203, 214, 0.2) !important;
+}
+
+.start-screen-time-menu {
+  position: fixed;
   top: 0;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.moment-controls input[type="date"] {
   left: 0;
-  width: 50%;
+  z-index: 1000;
+  display: grid;
+  width: 156px;
+  padding: 7px;
+  border: 1px solid rgba(154, 168, 184, 0.24);
+  border-radius: 8px;
+  background: #3a4048;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(0, 0, 0, 0.24);
 }
 
-.moment-controls input[type="time"] {
-  right: 0;
-  width: 50%;
+.start-screen-time-manual {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 7px;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.start-screen-time-manual-fields {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 5px;
+}
+
+.start-screen-time-manual input {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgba(154, 168, 184, 0.24);
+  border-radius: 6px;
+  background: #30363d;
+  color: #e2e6eb;
+  font: inherit;
+  font-size: 14px;
+  text-align: center;
+}
+
+.start-screen-time-manual-fields b {
+  color: #e2e6eb;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.start-screen-time-manual input:focus {
+  border-color: var(--signal);
+  outline: none;
+}
+
+.start-screen-time-list {
+  width: 100%;
+  height: 156px;
+  min-height: 156px;
+  padding: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: #30363d;
+  color: #e2e6eb;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  color-scheme: dark;
+}
+
+.start-screen-time-list:focus {
+  outline: none;
+}
+
+.start-screen-time-list option {
+  min-height: 27px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: #30363d;
+  color: #e2e6eb;
+}
+
+.start-screen-time-list option:checked,
+.start-screen-time-list option:hover {
+  background: #25404b;
+  color: #ffffff;
 }
 
 .action-button {
