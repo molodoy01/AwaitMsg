@@ -34,6 +34,20 @@ export function useChats({ connected }: { connected: boolean }) {
   }, []);
 
   useEffect(() => {
+    if (!selectedChat) return;
+
+    setChats((current) => {
+      const selectedIndex = current.findIndex((chat) => chat.id === selectedChat.id);
+
+      if (selectedIndex <= 0) return current;
+
+      const ordered = [current[selectedIndex], ...current.slice(0, selectedIndex), ...current.slice(selectedIndex + 1)];
+      saveChats(ordered);
+      return ordered;
+    });
+  }, [selectedChat]);
+
+  useEffect(() => {
     if (!connected) return;
 
     window.telegram

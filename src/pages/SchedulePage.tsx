@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { Pencil, Settings } from 'lucide-react';
+import { CalendarDays, Clock } from 'lucide-react';
 import { Notification } from '@/components/Notification';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
@@ -170,6 +170,8 @@ export function SchedulePage(props: SchedulePageProps) {
   } = props;
 
   const showTopbar = shouldShowTopbar({ connected, signedOut });
+  const [dateYear, dateMonth, dateDay] = date.split('-');
+  const [timeHours, timeMinutes] = time.split(':');
 
   return (
     <>
@@ -207,9 +209,6 @@ export function SchedulePage(props: SchedulePageProps) {
                 aria-label="Studio"
                 title="Studio"
               >
-                <span className="action-icon" aria-hidden="true">
-                  <Pencil size={15} strokeWidth={1.8} />
-                </span>
                 <span className="action-label">Studio</span>
               </a>
               <div className="brand">AWAITMSG</div>
@@ -223,12 +222,11 @@ export function SchedulePage(props: SchedulePageProps) {
                     setIsConfirmingLogout((current) => !current);
                   }}
                   disabled={authBusy}
-                  title="Sign out"
-                  aria-label="Sign out"
+                  title="Log out"
+                  aria-label="Log out"
                   aria-expanded={isConfirmingLogout}
                 >
-                  <span className="action-icon" aria-hidden="true">↪︎</span>
-                  <span className="action-label">Sign out</span>
+                  <span className="action-label">Log out</span>
                 </button>
 
                 {isConfirmingLogout && (
@@ -279,9 +277,6 @@ export function SchedulePage(props: SchedulePageProps) {
                 title="Settings"
                 aria-label="Settings"
               >
-                <span className="action-icon" aria-hidden="true">
-                  <Settings size={16} strokeWidth={1.8} />
-                </span>
                 <span className="action-label">Settings</span>
               </button>
             </div>
@@ -416,9 +411,6 @@ export function SchedulePage(props: SchedulePageProps) {
             >
               <div className="hero-slogan">LET IT WAIT.</div>
               <div className="assistant-visual-slot">
-                {!geminiSettings.enabled && (
-                  <div className="hero-subcopy">Message, ready when the moment arrives.</div>
-                )}
                 {geminiSettings.enabled ? (
                   <>
                     <div className="assistant-mark" aria-hidden="true">✦</div>
@@ -513,7 +505,7 @@ export function SchedulePage(props: SchedulePageProps) {
             </section>
 
             <section className="composer">
-              <div className="field">
+              <div className="field chat-field">
                 <label>Chat</label>
 
                 <ChatPicker
@@ -530,65 +522,39 @@ export function SchedulePage(props: SchedulePageProps) {
                 <label>Your message</label>
 
                 <div className="message-input-wrap">
+                  {!message && <span className="message-placeholder" aria-hidden="true">Leave something for later...</span>}
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    placeholder="What should the message say when the moment arrives?"
+                    aria-label="Your message"
                     maxLength={4096}
                     lang="ru"
-                    spellCheck
+                    spellCheck={false}
                   />
+                </div>
+
+                <div className="message-field-meta" aria-live="polite">
+                  {message.length} / 4096
                 </div>
               </div>
 
-              <div className="field">
-                <label>Your time</label>
-
+              <div className="field moment-field">
                 <div className="schedule-row">
                   <div className="moment-controls">
-                    <input
-                      type="date"
-                      value={date}
-                      onChange={(e) => {
-                        dateEditedRef.current = true;
-                        setDate(e.target.value);
-                      }}
-                      onPointerDown={(e) => {
-                        if (openPickerRef.current === 'date') {
-                          e.currentTarget.blur();
-                          openPickerRef.current = null;
-                        } else {
-                          openPickerRef.current = 'date';
-                        }
-                      }}
-                      onBlur={() => {
-                        if (openPickerRef.current === 'date') {
-                          openPickerRef.current = null;
-                        }
-                      }}
-                    />
+                    <div className="moment-date-display" aria-hidden="true">
+                      <CalendarDays className="moment-date-icon" aria-hidden="true" size={18} strokeWidth={1.8} />
+                      <span className="moment-day">{dateDay}</span>
+                      <span className="moment-date-separator">/</span>
+                      <span className="moment-month">{dateMonth}</span>
+                      <span className="moment-date-separator">/</span>
+                      <span className="moment-year">{dateYear}</span>
+                    </div>
 
-                    <input
-                      type="time"
-                      value={time}
-                      onChange={(e) => {
-                        timeEditedRef.current = true;
-                        setTime(e.target.value);
-                      }}
-                      onPointerDown={(e) => {
-                        if (openPickerRef.current === 'time') {
-                          e.currentTarget.blur();
-                          openPickerRef.current = null;
-                        } else {
-                          openPickerRef.current = 'time';
-                        }
-                      }}
-                      onBlur={() => {
-                        if (openPickerRef.current === 'time') {
-                          openPickerRef.current = null;
-                        }
-                      }}
-                    />
+                    <div className="moment-time-display" aria-hidden="true">
+                      <Clock className="moment-time-icon" aria-hidden="true" size={18} strokeWidth={1.8} />
+                      <span>{timeHours}</span>
+                      <span>{timeMinutes}</span>
+                    </div>
                   </div>
                 </div>
               </div>

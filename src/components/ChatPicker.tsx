@@ -19,7 +19,6 @@ export function ChatPicker({
   onError,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [addQuery, setAddQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -28,7 +27,6 @@ export function ChatPicker({
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
-        setShowAddForm(false);
       }
     }
 
@@ -50,7 +48,6 @@ export function ChatPicker({
           onAddChat(result.chat);
           onSelect(result.chat);
           setAddQuery('');
-          setShowAddForm(false);
           setOpen(false);
         } else if (onError) {
           onError(result.error || 'That chat could not be found.', 'Chat not found');
@@ -83,18 +80,13 @@ export function ChatPicker({
       </div>
 
       <div className={`chat-picker-menu ${open ? 'open' : ''}`}>
-        <div className="chat-add" onClick={() => setShowAddForm(!showAddForm)}>
-          Add a chat
-        </div>
-
-        <div className={`chat-add-form ${showAddForm ? 'open' : ''}`}>
+        <div className="chat-add-form open">
           <input
             type="text"
             value={addQuery}
             onChange={(e) => setAddQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="@username or chat name"
-            autoFocus={showAddForm}
+            placeholder="Add chat, @name or phone"
           />
           <button className="chat-add-button" onClick={handleAddChat} disabled={adding}>
             {adding ? '...' : 'Add'}
@@ -110,7 +102,13 @@ export function ChatPicker({
               setOpen(false);
             }}
           >
-            <span>{chat.name}</span>
+            <span className="chat-option-avatar" aria-hidden="true">
+              {chat.avatarDataUrl ? <img src={chat.avatarDataUrl} alt="" /> : chat.name.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="chat-option-copy">
+              <strong className="chat-option-name">{chat.name}</strong>
+              <span className="chat-option-type">{chat.name === 'Saved Messages' ? 'Saved Messages' : chat.type || 'Chat'}</span>
+            </span>
             {selectedChat?.id === chat.id && (
               <button
                 className="msg-btn delete"

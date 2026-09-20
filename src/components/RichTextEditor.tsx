@@ -80,6 +80,13 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
     selection.addRange(range);
   };
 
+  const clearSelection = () => {
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    savedRangeRef.current = null;
+  };
+
   const runCommand = (command: FormatCommand) => {
     restoreSelection();
     document.execCommand(command);
@@ -130,6 +137,11 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
           onSelect={saveSelection}
           onBlur={() => {
             setEditorFocused(false);
+            const selection = window.getSelection();
+            if (!selection || !editorRef.current?.contains(selection.anchorNode)) {
+              clearSelection();
+              return;
+            }
             saveSelection();
           }}
           onKeyDown={(event) => {
