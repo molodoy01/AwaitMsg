@@ -22,6 +22,12 @@ declare global {
     error?: string;
   }
 
+  interface TelegramAvailableEffect {
+    id: string;
+    emoticon: string;
+    premiumRequired: boolean;
+  }
+
   interface Window {
     gemini: {
       generate: (prompt: string, context: {
@@ -99,7 +105,12 @@ declare global {
         contacts?: { id: string; name: string; username?: string; phone?: string }[];
         error?: string;
       }>;
-      send: (chatId: string, message: string, attachments?: string[], entities?: TelegramFormattingEntity[], replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url?: string; callback_data?: string }>> }) => Promise<{
+      getAvailableEffects: () => Promise<{
+        success: boolean;
+        effects?: TelegramAvailableEffect[];
+        error?: string;
+      }>;
+      send: (chatId: string, message: string, attachments?: string[], entities?: TelegramFormattingEntity[], replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url?: string; callback_data?: string }>> }, silent?: boolean, effect?: string) => Promise<{
         success: boolean;
         error?: string;
       }>;
@@ -110,6 +121,8 @@ declare global {
         attachments?: string[];
         entities?: TelegramFormattingEntity[];
         replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url?: string; callback_data?: string }>> };
+        silent?: boolean;
+        effect?: string;
       }) => Promise<{
         success: boolean;
         id?: string | number;

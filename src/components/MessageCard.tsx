@@ -1,4 +1,4 @@
-import type { ScheduledMessage } from '@/types';
+import type { MessageOption, ScheduledMessage } from '@/types';
 import { formatDateTime } from '@/lib/utils';
 import { richTextToHtml } from '@/lib/richText';
 
@@ -30,6 +30,7 @@ interface Props {
   isSending?: boolean;
   isRevealing?: boolean;
   showCreatedMeta?: boolean;
+  selectedMessageOption?: MessageOption | null;
 }
 
 export function MessageCard({
@@ -44,11 +45,18 @@ export function MessageCard({
   isSending,
   isRevealing,
   showCreatedMeta,
+  selectedMessageOption = null,
 }: Props) {
   const createdLabel = new Date(message.createdAt).toLocaleString([], {
     dateStyle: 'short',
     timeStyle: 'short',
   }).replace(/\s*р\.\s*$/, '');
+
+  const messageOption: MessageOption | null = message.effect
+    ? 'effect'
+    : message.silent
+      ? 'silent'
+      : selectedMessageOption ?? null;
 
   return (
     <div
@@ -94,6 +102,11 @@ export function MessageCard({
         <div className="message-meta-row">
           <div className="message-meta">
             {formatDateTime(message.when)}
+              {messageOption && (
+                <span className="message-history-option-icon" aria-label="Selected sending option">
+                  {messageOption === 'silent' ? '🔕' : '✨'}
+                </span>
+              )}
           </div>
 
           {showCreatedMeta && (

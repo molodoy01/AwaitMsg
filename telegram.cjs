@@ -68,7 +68,6 @@ function refreshRuntimeSecrets() {
   runtimeSignedOut = next.signedOut === true;
   return {
     apiId: runtimeApiId,
-    apiHash: runtimeApiHash,
     sessionString: runtimeSessionString,
     signedOut: runtimeSignedOut
   };
@@ -1328,6 +1327,34 @@ function getContacts() {
   return trackTelegramOperation('getContacts', getContactsInternal);
 }
 
+async function getAvailableEffectsInternal() {
+  if (!client) {
+    await connectTelegram();
+  }
+
+  const result = await telegramRequest(() => withTimeout(
+    client.invoke(new Api.messages.GetAvailableEffects({ hash: 0 })),
+    REQUEST_TIMEOUT,
+    'Loading Telegram effects'
+  ));
+
+  const effects = Array.isArray(result?.effects)
+    ? result.effects
+        .map((effect) => ({
+          id: effect?.id != null ? String(effect.id) : '',
+          emoticon: typeof effect?.emoticon === 'string' && effect.emoticon.trim() ? effect.emoticon : '✨',
+          premiumRequired: Boolean(effect?.premiumRequired)
+        }))
+        .filter((effect) => effect.id)
+    : [];
+
+  return effects;
+}
+
+function getAvailableEffects() {
+  return trackTelegramOperation('getAvailableEffects', getAvailableEffectsInternal);
+}
+
 // =========================================================
 // NORMALIZE SEARCH QUERY
 // =========================================================
@@ -1877,7 +1904,9 @@ async function sendMessageInternal(
   message,
   attachments = [],
   entities = [],
-  replyMarkup
+  replyMarkup,
+  silent = false,
+  effect
 ) {
 
   if (!client) {
@@ -1894,6 +1923,14 @@ async function sendMessageInternal(
   try {
 
     const sendOptions = { message };
+
+    if (silent) {
+      sendOptions.silent = true;
+    }
+
+    if (effect !== undefined) {
+      sendOptions.effect = BigInt(effect);
+    }
 
     if (entities.length > 0) {
       sendOptions.formattingEntities = toTelegramFormattingEntities(entities);
@@ -1921,6 +1958,8 @@ async function sendMessageInternal(
           message,
           entities: sendOptions.formattingEntities,
           replyMarkup: preparedMarkup,
+          silent: sendOptions.silent === true,
+          ...(sendOptions.effect !== undefined ? { effect: sendOptions.effect } : {}),
         });
         return clientAtStart.invoke(request);
       };
@@ -1947,8 +1986,8 @@ async function sendMessageInternal(
   }
 }
 
-function sendMessage(chatId, message, attachments, entities, replyMarkup) {
-  return trackTelegramOperation('send', () => sendMessageInternal(chatId, message, attachments, entities, replyMarkup));
+function sendMessage(chatId, message, attachments, entities, replyMarkup, silent, effect) {
+  return trackTelegramOperation('send', () => sendMessageInternal(chatId, message, attachments, entities, replyMarkup, silent, effect));
 }
 
 // =========================================================
@@ -1963,7 +2002,9 @@ async function scheduleMessageInternal(
   targetTimestamp,
   attachments = [],
   entities = [],
-  replyMarkup
+  replyMarkup,
+  silent = false,
+  effect
 ) {
 
   if (!client) {
@@ -2022,6 +2063,14 @@ async function scheduleMessageInternal(
     schedule: scheduledDate
   };
 
+  if (silent) {
+    sendOptions.silent = true;
+  }
+
+  if (effect !== undefined) {
+    sendOptions.effect = BigInt(effect);
+  }
+
   if (entities.length > 0) {
     sendOptions.formattingEntities = toTelegramFormattingEntities(entities);
   }
@@ -2046,6 +2095,8 @@ async function scheduleMessageInternal(
         entities: sendOptions.formattingEntities,
         replyMarkup: preparedMarkup,
         scheduleDate: scheduledDate,
+        silent: sendOptions.silent === true,
+        ...(sendOptions.effect !== undefined ? { effect: sendOptions.effect } : {}),
       });
       return client.invoke(request);
     };
@@ -2140,7 +2191,7 @@ async function scheduleMessageInternal(
   };
 }
 
-function scheduleMessage(chatId, message, date, time, targetTimestamp, attachments, entities, replyMarkup) {
+function scheduleMessage(chatId, message, date, time, targetTimestamp, attachments, entities, replyMarkup, silent, effect) {
   return trackTelegramOperation('schedule', () => scheduleMessageInternal(
     chatId,
     message,
@@ -2149,7 +2200,9 @@ function scheduleMessage(chatId, message, date, time, targetTimestamp, attachmen
     targetTimestamp,
     attachments,
     entities,
-    replyMarkup
+    replyMarkup,
+    silent,
+    effect
   ));
 }
 
@@ -2275,6 +2328,7 @@ function cancelScheduledMessage(chatId, messageId, message, date, time) {
     getChatAvatar,
     getChatHistory,
     getContacts,
+    getAvailableEffects,
     resolveChat,
     sendMessage,
     scheduleMessage,
@@ -2301,6 +2355,7 @@ module.exports = {
   getChatAvatar: (...args) => defaultCore.getChatAvatar(...args),
   getChatHistory: (...args) => defaultCore.getChatHistory(...args),
   getContacts: (...args) => defaultCore.getContacts(...args),
+  getAvailableEffects: (...args) => defaultCore.getAvailableEffects(...args),
   resolveChat: (...args) => defaultCore.resolveChat(...args),
   sendMessage: (...args) => defaultCore.sendMessage(...args),
   scheduleMessage: (...args) => defaultCore.scheduleMessage(...args),

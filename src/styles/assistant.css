@@ -13,7 +13,7 @@
 
 .hero-slogan {
   align-self: flex-start;
-  margin-bottom: 47px;
+  margin: 70px 0 47px 70px;
   color: var(--text);
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: clamp(2.2rem, 4.2vw, 4rem);
@@ -24,14 +24,7 @@
 }
 
 .hero-slogan::before {
-  content: "";
-  position: absolute;
-  top: 0.02em;
-  bottom: -0.16em;
-  left: -14px;
-  width: 2px;
-  background: linear-gradient(180deg, rgba(111, 155, 124, 0.02), rgba(111, 155, 124, 0.98) 48%, rgba(111, 155, 124, 0.02));
-  pointer-events: none;
+  content: none;
 }
 
 .hero-subcopy {

@@ -66,7 +66,7 @@ export function SettingsView({
         <h1>Settings</h1>
 
         <div className="settings-sections">
-          <section className="settings-view-section">
+          <section className="settings-view-section" style={{ display: 'none' }}>
             <h2>AI Assistant</h2>
             <p className="settings-view-description">
               Create scheduled messages in your own words.
@@ -85,7 +85,7 @@ export function SettingsView({
             </button>
           </section>
 
-          <section className="settings-view-section">
+          <section className="settings-view-section" style={{ display: 'none' }}>
             <div className="settings-section-heading-row">
               <h2>Gemini API Key</h2>
               <span className={`settings-status ${geminiSettings.hasKey ? 'is-ready' : 'is-missing'}`}>

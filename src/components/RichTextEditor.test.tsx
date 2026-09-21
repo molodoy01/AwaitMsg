@@ -52,4 +52,17 @@ describe('RichTextEditor DOM behavior', () => {
     expect(editor.textContent).toBe('12345');
     expect(onChange).toHaveBeenCalledWith('12345', []);
   });
+
+  it('adds one extra line when content exceeds the default editor height', () => {
+    const { editor } = renderEditor();
+    Object.defineProperty(editor, 'scrollHeight', {
+      configurable: true,
+      value: 220,
+    });
+
+    fireEvent.input(editor, { target: { textContent: 'line 1\nline 2\nline 3\nline 4' } });
+
+    expect(editor.style.height).toBe('244px');
+    expect(editor.style.minHeight).toBe('244px');
+  });
 });

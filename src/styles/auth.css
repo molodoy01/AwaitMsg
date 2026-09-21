@@ -27,8 +27,8 @@
 
 .auth-hero-copy {
   position: fixed;
-  top: 200px;
-  left: 200px;
+  top: 70px;
+  left: 70px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -46,14 +46,7 @@
 }
 
 .auth-hero-copy::before {
-  content: "";
-  position: absolute;
-  top: 0.08em;
-  bottom: -0.1em;
-  left: -24px;
-  width: 2px;
-  background: linear-gradient(180deg, rgba(111, 155, 124, 0.18), rgba(111, 155, 124, 0.82) 48%, rgba(111, 155, 124, 0.18));
-  pointer-events: none;
+  content: none;
 }
 
 .auth-hero-line {

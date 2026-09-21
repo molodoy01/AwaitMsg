@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { CalendarDays, Clock, MessageCircle } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Chat, RichTextEntity, Template } from '@/types';
-import { MAX_SCHEDULE_OCCURRENCES, type ScheduleRepeatOptions } from '@/lib/scheduling';
+import type { ScheduleRepeatOptions } from '@/lib/scheduling';
 import { InlineKeyboardBuilder } from '@/components/InlineKeyboardBuilder';
 import type { InlineButtonRow } from '@/lib/inlineKeyboard';
 
@@ -128,11 +128,11 @@ export function WorkspaceTextStage({
   const [timeMenuPosition, setTimeMenuPosition] = useState({ top: 0, left: 0 });
   const timePickerRef = useRef<HTMLSpanElement>(null);
   const timeMenuRef = useRef<HTMLDivElement>(null);
+  const timeListRef = useRef<HTMLSelectElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const scheduleMoreRef = useRef<HTMLDivElement>(null);
   const scheduleWhenRef = useRef<HTMLElement>(null);
   const scheduleRepeatRef = useRef<HTMLElement>(null);
-  const scheduleFlowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (mode === 'chat') {
@@ -165,19 +165,10 @@ export function WorkspaceTextStage({
   }, [mode]);
 
   useEffect(() => {
-    if (!scheduleRepeatOpen) return;
+    if (!scheduleRepeatOpen || (repeatMode !== 'weekly' && repeatMode !== 'biweekly')) return;
 
     requestAnimationFrame(() => {
-      const flow = scheduleFlowRef.current;
-      const repeat = scheduleRepeatRef.current;
-      if (!flow || !repeat) return;
-
-      repeat.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      if (repeatMode === 'none') return;
-
-      window.requestAnimationFrame(() => {
-        flow.scrollTo({ top: flow.scrollHeight, behavior: 'smooth' });
-      });
+      scheduleRepeatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }, [repeatMode, scheduleRepeatOpen]);
 
@@ -220,6 +211,15 @@ export function WorkspaceTextStage({
     window.addEventListener('resize', updateTimeMenuPosition);
     return () => window.removeEventListener('resize', updateTimeMenuPosition);
   }, [timePickerOpen]);
+
+  useLayoutEffect(() => {
+    if (!timePickerOpen) return;
+
+    const selectedOption = timeListRef.current?.selectedOptions[0];
+    if (typeof selectedOption?.scrollIntoView === 'function') {
+      selectedOption.scrollIntoView({ block: 'center' });
+    }
+  }, [time, timePickerOpen]);
 
   const visibleSelectedChats = selectedChats.filter((chat) => chats.some((item) => item.id === chat.id));
   const filteredChats = chats.filter((chat) => {
@@ -342,7 +342,7 @@ export function WorkspaceTextStage({
           <p className="workspace-page-schedule-timezone">{getLocalTimezoneLabel()}</p>
         </div>
 
-        <div ref={scheduleFlowRef} className="workspace-page-schedule-flow">
+          <div className="workspace-page-schedule-flow">
           <section ref={scheduleWhenRef} className="workspace-page-schedule-row-section is-open workspace-page-schedule-when-section">
             <div className="workspace-page-schedule-selection-row">
               <label className="workspace-page-schedule-selection-field">
@@ -400,14 +400,14 @@ export function WorkspaceTextStage({
                   {timePickerOpen && createPortal(
                     <div
                       ref={timeMenuRef}
-                      className="workspace-page-schedule-time-menu workspace-page-schedule-time-menu-simple"
+                        className="workspace-page-schedule-time-menu start-screen-time-menu"
                       style={timeMenuPosition}
                       role="listbox"
                       aria-label="Choose time"
                     >
-                      <label className="workspace-page-schedule-time-manual">
+                      <label className="start-screen-time-manual">
                         <span>Manual time</span>
-                        <span className="workspace-page-schedule-time-manual-fields">
+                        <span className="start-screen-time-manual-fields">
                           <input
                             type="text"
                             value={manualTime.split(':')[0]}
@@ -430,18 +430,20 @@ export function WorkspaceTextStage({
                         </span>
                       </label>
                       <select
-                        className="workspace-page-schedule-time-list"
+                        ref={timeListRef}
+                        className="start-screen-time-list"
                         aria-label="Choose time"
                         size={6}
                         value={`${time.slice(0, 2)}:00`}
                         onChange={(event) => {
                           setTime(event.target.value);
+                          setManualTime(event.target.value);
                           setTimePickerOpen(false);
                         }}
                       >
                         {timeOptions.map((option) => (
                           <option key={option} value={option}>
-                            {new Date(`2000-01-01T${option}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {option}
                           </option>
                         ))}
                       </select>
@@ -490,7 +492,7 @@ export function WorkspaceTextStage({
               {scheduleRepeatOpen && <div className="workspace-page-schedule-repeat-menu">
                 {([['none', "Doesn't repeat"], ['daily', 'Every day'], ['weekly', 'Every week'], ['biweekly', 'Every 2 weeks'], ['monthly', 'Every month']] as const).map(([value, label]) => <button type="button" key={value} className={repeatMode === value ? 'is-selected' : ''} onClick={() => selectRepeatMode(value)}>{label}</button>)}
                 {(repeatMode === 'weekly' || repeatMode === 'biweekly') && <div className="workspace-page-weekday-list">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <button type="button" key={day} className={repeatDays.includes(day) ? 'is-selected' : ''} onClick={() => setRepeatDays((current) => current.includes(day) ? current.filter((item) => item !== day) : [...current, day])}>{day}</button>)}</div>}
-                {repeatMode !== 'none' && <label className="workspace-page-repeat-count"><span>Runs</span><select value={repeatOccurrences} onChange={(event) => setRepeatOccurrences(Math.min(MAX_SCHEDULE_OCCURRENCES, Math.max(1, Number(event.target.value))))}>{[2, 3, 5, 10, 15].map((count) => <option value={count} key={count}>{count} times</option>)}</select></label>}
+                {repeatMode !== 'none' && <label className="workspace-page-repeat-count"><span>Runs</span><select value={repeatOccurrences} onChange={(event) => setRepeatOccurrences(Number(event.target.value))}>{[2, 3, 5, 10, 20].map((count) => <option value={count} key={count}>{count} times</option>)}</select></label>}
               </div>}
             </section>
 

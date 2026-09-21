@@ -76,7 +76,18 @@ export function ChatPicker({
         tabIndex={0}
         role="button"
       >
-        {selectedChat ? selectedChat.name : 'Choose a chat…'}
+        <span className="chat-picker-current-avatar" aria-hidden="true">
+          {selectedChat?.avatarDataUrl ? (
+            <img src={selectedChat.avatarDataUrl} alt="" />
+          ) : (
+            <span>{selectedChat ? selectedChat.name.slice(0, 1).toUpperCase() : 'C'}</span>
+          )}
+        </span>
+        <span className="chat-picker-current-copy">
+          <span className="chat-picker-current-name">
+            {selectedChat ? selectedChat.name : 'Choose a chat…'}
+          </span>
+        </span>
       </div>
 
       <div className={`chat-picker-menu ${open ? 'open' : ''}`}>

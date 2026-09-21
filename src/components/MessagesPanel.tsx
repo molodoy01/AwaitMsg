@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ScheduledMessage } from '@/types';
+import type { MessageOption, ScheduledMessage } from '@/types';
 import { MessageCard } from './MessageCard';
 
 interface Props {
@@ -18,6 +18,7 @@ interface Props {
   sendingIds: Set<string>;
   showAllMessages?: boolean;
   upcomingLabel?: string;
+  selectedMessageOption?: MessageOption | null;
 }
 
 export function MessagesPanel({
@@ -36,6 +37,7 @@ export function MessagesPanel({
   sendingIds,
   showAllMessages = false,
   upcomingLabel = 'Upcoming',
+  selectedMessageOption = null,
 }: Props) {
   const [showOlderUpcoming, setShowOlderUpcoming] = useState(false);
   const [showOlderSent, setShowOlderSent] = useState(false);
@@ -347,6 +349,7 @@ export function MessagesPanel({
                   railColor="#9aa8b8"
                   isCanceling={cancelingIds.has(msg.id)}
                   isSending={sendingIds.has(msg.id)}
+                  selectedMessageOption={selectedMessageOption}
                 />
               ))}
             </div>
@@ -381,6 +384,7 @@ export function MessagesPanel({
                     isCanceling={cancelingIds.has(msg.id)}
                     isSending={sendingIds.has(msg.id)}
                     showCreatedMeta={true}
+                    selectedMessageOption={selectedMessageOption}
                   />
                 ))}
               </div>
@@ -414,6 +418,7 @@ export function MessagesPanel({
                   showDelete={true}
                   railColor="#6f9b7c"
                   isRevealing={revealingId === msg.id}
+                  selectedMessageOption={selectedMessageOption}
                 />
               ))}
             </div>
@@ -445,6 +450,7 @@ export function MessagesPanel({
                     showDelete={true}
                     railColor="#6f9b7c"
                     isRevealing={revealingId === msg.id}
+                    selectedMessageOption={selectedMessageOption}
                   />
                 ))}
               </div>

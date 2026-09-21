@@ -40,10 +40,14 @@ export interface ScheduledMessage {
   attachments?: string[];
   entities?: RichTextEntity[];
   replyMarkup?: import('./lib/inlineKeyboard').InlineKeyboardMarkup;
+  silent?: boolean;
+  effect?: string;
   operationId?: string;
   sentAt?: string;
   telegramMessageId?: string | number;
 }
+
+export type MessageOption = 'silent' | 'effect';
 
 export interface PreviewHistoryMessage {
   id: string;

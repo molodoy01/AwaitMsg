@@ -131,10 +131,17 @@
 }
 
 .empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
   padding: 28px 12px 30px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--dim);
+  color: rgba(226, 230, 235, 0.18);
+  font-family: var(--sans);
+  font-size: clamp(28px, 2.8vw, 54px);
+  font-weight: 200;
+  letter-spacing: -0.055em;
+  line-height: 1.08;
   text-align: center;
 }
 

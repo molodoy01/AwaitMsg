@@ -19,10 +19,10 @@
 .settings-view-logo {
   display: inline-flex;
   align-items: center;
-  color: #c2cbd3;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: rgba(200, 210, 219, 0.8);
+  font-family: "Avenir Next", "Segoe UI Light", "Helvetica Neue", Arial, sans-serif;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 350;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   line-height: 1;
@@ -31,7 +31,7 @@
 .settings-view-done {
   background: transparent;
   border: 0;
-  color: #dfe8f1;
+  color: rgba(220, 230, 238, 0.8);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -63,12 +63,12 @@
 .settings-view-content h1 {
   margin: 0;
   margin-left: 20px;
-  color: #f2f5f7;
+  color: rgba(235, 240, 244, 0.8);
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: clamp(2.2rem, 5vw, 4.2rem);
   line-height: 0.96;
   letter-spacing: 0.5px;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .settings-sections {
@@ -91,7 +91,7 @@
 
 .settings-view-section h2 {
   margin: 0;
-  color: #e8edf1;
+  color: rgba(230, 237, 242, 0.8);
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;
   font-weight: 400;
@@ -144,7 +144,7 @@
 
 .settings-view-description {
   margin: 10px 0 0;
-  color: #b3bec9;
+  color: rgba(177, 189, 201, 0.8);
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.55;
@@ -163,7 +163,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #dfe8f1;
+  color: rgba(223, 232, 241, 0.8);
   font-size: 13px;
   cursor: pointer;
 }
@@ -197,7 +197,7 @@
 }
 
 .settings-key-value {
-  color: #dfe8f1;
+  color: rgba(223, 232, 241, 0.75);
   font-family: var(--mono);
   font-size: 12px;
 }

@@ -89,6 +89,16 @@ function validateTimestamp(value) {
   return value;
 }
 
+function validateEffect(value) {
+  if (value === undefined) return undefined;
+
+  if (typeof value !== 'string' || !/^\d{1,20}$/.test(value)) {
+    invalidInput('effect has an invalid format');
+  }
+
+  return value;
+}
+
 function validateReplyMarkup(value) {
   if (value === undefined) return undefined;
   if (!isPlainObject(value) || !Array.isArray(value.inline_keyboard) || value.inline_keyboard.length > MAX_INLINE_BUTTON_ROWS) {
@@ -131,7 +141,9 @@ function validateSchedulePayload(value) {
     entities: validateFormattingEntities(value.entities, value.message.length),
     targetTimestamp: validateTimestamp(value.targetTimestamp),
     attachments: validateAttachments(value.attachments),
-    replyMarkup: validateReplyMarkup(value.replyMarkup)
+    replyMarkup: validateReplyMarkup(value.replyMarkup),
+    silent: value.silent === true,
+    effect: validateEffect(value.effect)
   };
 }
 
@@ -196,7 +208,9 @@ function validateSendPayload(value) {
     message: validateMessage(value.message),
     entities: validateFormattingEntities(value.entities, value.message.length),
     attachments: validateAttachments(value.attachments),
-    replyMarkup: validateReplyMarkup(value.replyMarkup)
+    replyMarkup: validateReplyMarkup(value.replyMarkup),
+    silent: value.silent === true,
+    effect: validateEffect(value.effect)
   };
 }
 

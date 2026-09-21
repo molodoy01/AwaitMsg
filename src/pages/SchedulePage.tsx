@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { CalendarDays, Clock } from 'lucide-react';
+import { CalendarDays, Clock, Eraser, Menu, Paperclip, Send, X } from 'lucide-react';
 import { Notification } from '@/components/Notification';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
@@ -82,7 +82,7 @@ type SchedulePageProps = {
   dateEditedRef: MutableRefObject<boolean>;
   timeEditedRef: MutableRefObject<boolean>;
   openPickerRef: MutableRefObject<'date' | 'time' | null>;
-  handleSchedule: (payload?: { chatId: string; message: string; date: string; time: string }) => void;
+  handleSchedule: (payload?: { chatId: string; message: string; date: string; time: string; attachments?: string[]; silent?: boolean; effect?: string }) => void;
   handleCancelMessage: (message: ScheduledMessage) => void;
   handleSendNow: (message: ScheduledMessage) => void;
   handleDeleteMessage: (message: ScheduledMessage) => void;
@@ -174,12 +174,94 @@ export function SchedulePage(props: SchedulePageProps) {
   const showTopbar = shouldShowTopbar({ connected, signedOut });
   const datePickerRef = useRef<HTMLInputElement>(null);
   const timePickerRef = useRef<SVGSVGElement>(null);
+  const timeDisplayRef = useRef<HTMLDivElement>(null);
   const timeMenuRef = useRef<HTMLDivElement>(null);
+  const messageOptionsRef = useRef<HTMLDivElement>(null);
+  const effectMenuRef = useRef<HTMLDivElement>(null);
+  const messageOptionsButtonRef = useRef<HTMLButtonElement>(null);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [messageOptionsOpen, setMessageOptionsOpen] = useState(false);
+  const [selectedMessageOption, setSelectedMessageOption] = useState<'silent' | 'effect' | null>(null);
+  const [selectedEffectId, setSelectedEffectId] = useState<string | null>(null);
+  const [availableEffects, setAvailableEffects] = useState<Array<{ id: string; emoticon: string; premiumRequired: boolean }>>([]);
+  const [effectsLoading, setEffectsLoading] = useState(false);
+  const [effectMenuOpen, setEffectMenuOpen] = useState(false);
+  const [premiumEffectsOpen, setPremiumEffectsOpen] = useState(false);
   const [manualTime, setManualTime] = useState(time);
+  const manualTimeEditedRef = useRef(false);
+  const MAX_ATTACHMENTS = 7;
   const [timeMenuPosition, setTimeMenuPosition] = useState({ top: 0, left: 0 });
   const [dateYear, dateMonth, dateDay] = date.split('-');
   const [timeHours, timeMinutes] = time.split(':');
+  const [attachments, setAttachments] = useState<Array<{ name: string; path: string }>>([]);
+  const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState<number | null>(null);
+  const [previewPosition, setPreviewPosition] = useState<{ left: number; top: number } | null>(null);
+  const previewTimerRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const selectedEffect = availableEffects.find((effect) => effect.id === selectedEffectId);
+  const premiumEffects = availableEffects.filter((effect) => effect.premiumRequired === true);
+  const freeEffects = availableEffects.filter((effect) => effect.premiumRequired !== true);
+
+  const loadAvailableEffects = useCallback(async () => {
+    if (!connected) {
+      setAvailableEffects([]);
+      return [];
+    }
+
+    setEffectsLoading(true);
+
+    try {
+      const result = await window.telegram.getAvailableEffects();
+      if (result.success) {
+        const effects = result.effects ?? [];
+        setAvailableEffects(effects);
+        return effects;
+      } else {
+        setAvailableEffects([]);
+      }
+    } catch {
+      setAvailableEffects([]);
+    } finally {
+      setEffectsLoading(false);
+    }
+
+    return [];
+  }, [connected]);
+
+  useEffect(() => {
+    if (!messageOptionsOpen || selectedMessageOption !== 'effect') return;
+    void loadAvailableEffects();
+  }, [messageOptionsOpen, selectedMessageOption, loadAvailableEffects]);
+
+  const clearPreviewTimer = () => {
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+  };
+
+  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+
+    const remainingSlots = MAX_ATTACHMENTS - attachments.length;
+    if (remainingSlots <= 0) {
+      showNotification(`Можно добавить не больше ${MAX_ATTACHMENTS} вложений.`, 'error', 'Вложения');
+      event.target.value = '';
+      return;
+    }
+
+    const acceptedFiles = files.slice(0, remainingSlots);
+    if (acceptedFiles.length < files.length) {
+      showNotification(`Можно добавить не больше ${MAX_ATTACHMENTS} вложений.`, 'warning', 'Вложения');
+    }
+
+    setAttachments((current) => [
+      ...current,
+      ...acceptedFiles.map((file) => ({ name: file.name, path: window.telegram.getFilePath(file) })),
+    ]);
+    event.target.value = '';
+  };
 
   const togglePicker = (kind: 'date', pickerRef: MutableRefObject<HTMLInputElement | null>) => {
     const picker = pickerRef.current;
@@ -194,6 +276,12 @@ export function SchedulePage(props: SchedulePageProps) {
     picker.showPicker?.();
     openPickerRef.current = kind;
   };
+
+  useEffect(() => {
+    return () => {
+      clearPreviewTimer();
+    };
+  }, []);
 
   useEffect(() => {
     if (!timePickerOpen) return;
@@ -215,17 +303,45 @@ export function SchedulePage(props: SchedulePageProps) {
     };
   }, [timePickerOpen]);
 
+  useEffect(() => {
+    if (!messageOptionsOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (
+        !messageOptionsRef.current?.contains(event.target as Node)
+        && !effectMenuRef.current?.contains(event.target as Node)
+        && !messageOptionsButtonRef.current?.contains(event.target as Node)
+      ) {
+        setMessageOptionsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMessageOptionsOpen(false);
+        messageOptionsButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [messageOptionsOpen]);
+
   useLayoutEffect(() => {
     if (!timePickerOpen) return;
 
     const updateTimeMenuPosition = () => {
-      const trigger = timePickerRef.current?.getBoundingClientRect();
+      const trigger = timeDisplayRef.current?.getBoundingClientRect();
       const menu = timeMenuRef.current;
       if (!trigger || !menu) return;
 
+      const centeredLeft = trigger.left + trigger.width / 2 - menu.offsetWidth / 2;
       setTimeMenuPosition({
-        top: Math.min(trigger.bottom + 6, window.innerHeight - menu.offsetHeight - 12),
-        left: Math.max(12, Math.min(trigger.left - 160, window.innerWidth - menu.offsetWidth - 12)),
+        top: Math.max(12, trigger.bottom + 6),
+        left: Math.max(12, Math.min(centeredLeft, window.innerWidth - menu.offsetWidth - 12)),
       });
     };
 
@@ -235,11 +351,12 @@ export function SchedulePage(props: SchedulePageProps) {
   }, [timePickerOpen]);
 
   const openTimePicker = () => {
-    setManualTime(time);
+    if (!manualTimeEditedRef.current) setManualTime(time);
     setTimePickerOpen((current) => !current);
   };
 
   const updateManualTimePart = (part: 'hours' | 'minutes', value: string) => {
+    manualTimeEditedRef.current = true;
     const digits = value.replace(/\D/g, '').slice(0, 2);
     const [currentHours, currentMinutes] = manualTime.split(':');
     const nextHours = part === 'hours' ? digits : currentHours;
@@ -613,7 +730,7 @@ export function SchedulePage(props: SchedulePageProps) {
 
             <section className="composer">
               <div className="field chat-field">
-                <label>Chat</label>
+                <label className="composer-field-label">Chat</label>
 
                 <ChatPicker
                   chats={chats}
@@ -626,7 +743,7 @@ export function SchedulePage(props: SchedulePageProps) {
               </div>
 
               <div className="field message-field">
-                <label>Your message</label>
+                <label className="composer-field-label">Your message</label>
 
                 <div className="message-input-wrap">
                   {!message && <span className="message-placeholder" aria-hidden="true">Leave something for later...</span>}
@@ -638,11 +755,262 @@ export function SchedulePage(props: SchedulePageProps) {
                     lang="ru"
                     spellCheck={false}
                   />
-                </div>
 
                 <div className="message-field-meta" aria-live="polite">
-                  {message.length} / 4096
+                  <div className="message-action-icons">
+                    <button
+                      type="button"
+                      className="message-attachment-button"
+                      aria-label="Add attachment"
+                      title="Add attachment"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip size={17} strokeWidth={1.8} aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <div className={`message-attachments ${attachments.length ? 'has-attachments' : ''}`}>
+                    {attachments.map((attachment, index) => {
+                      const isImage = /\.(?:avif|gif|jpe?g|png|webp)$/i.test(attachment.name);
+                      const isAudio = /\.(?:aac|aiff|flac|m4a|mp3|ogg|wav|wma)$/i.test(attachment.name);
+                      const nameWithoutExtension = attachment.name.includes('.')
+                        ? attachment.name.slice(0, attachment.name.lastIndexOf('.'))
+                        : attachment.name;
+                      const fileExtension = attachment.name.includes('.')
+                        ? attachment.name.slice(attachment.name.lastIndexOf('.'))
+                        : '';
+                      const baseLength = Math.max(0, 12 - (fileExtension.length || 0));
+                      const compactBaseName = nameWithoutExtension.length > baseLength
+                        ? `${nameWithoutExtension.slice(0, baseLength)}…`
+                        : nameWithoutExtension;
+                      const shortName = attachment.name.length > 18
+                        ? `${compactBaseName}${fileExtension}`
+                        : attachment.name;
+
+                      return (
+                        <span
+                          className="message-attachment-chip"
+                          key={`${attachment.path}-${index}`}
+                          onMouseEnter={(event) => {
+                            if (!isImage) return;
+                            clearPreviewTimer();
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setPreviewPosition({
+                              left: rect.left + rect.width / 2,
+                              top: rect.top - 12,
+                            });
+                            previewTimerRef.current = window.setTimeout(() => {
+                              setPreviewAttachmentIndex(index);
+                            }, 850);
+                          }}
+                          onMouseMove={(event) => {
+                            if (!isImage || previewAttachmentIndex !== index) return;
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setPreviewPosition({
+                              left: rect.left + rect.width / 2,
+                              top: rect.top - 12,
+                            });
+                          }}
+                          onMouseLeave={() => {
+                            clearPreviewTimer();
+                            setPreviewAttachmentIndex(null);
+                            setPreviewPosition(null);
+                          }}
+                        >
+                          {isImage ? (
+                            <img className="message-attachment-thumb" src={attachment.path} alt={attachment.name} />
+                          ) : (
+                            <span className={`message-attachment-filemark ${isAudio ? 'is-audio' : ''}`} aria-hidden="true">
+                              {isAudio ? (
+                                <svg className="message-attachment-music-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                  <path d="M9 18V7.7l9-2.1v9.1a2.7 2.7 0 1 1-2.7-2.7 3.4 3.4 0 0 1 .9.1V7.8l-6.2 1.5V18a2.7 2.7 0 1 1-2.7-2.7A3.5 3.5 0 0 1 9 18Z" fill="currentColor"/>
+                                </svg>
+                              ) : (
+                                <svg className="message-attachment-document-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                  <path d="M7 3.5A2.5 2.5 0 0 1 9.5 1h6.2c.4 0 .8.1 1.1.4l2.8 2.8c.3.3.4.7.4 1.1v13.2A2.5 2.5 0 0 1 17.5 21h-8A2.5 2.5 0 0 1 7 18.5v-15Zm3 2.5h5v2h-5V6Zm0 4h7v2h-7v-2Zm0 4h7v2h-7v-2Zm-1-8h.01v2H9V6Z" fill="currentColor"/>
+                                </svg>
+                              )}
+                            </span>
+                          )}
+                          <span className="message-attachment-name" title={attachment.name}>{shortName}</span>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${attachment.name}`}
+                            onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                          >
+                            <X size={12} aria-hidden="true" />
+                          </button>
+                        </span>
+                      );
+                    })}
+
+                    {previewAttachmentIndex !== null && attachments[previewAttachmentIndex] && /\.(?:avif|gif|jpe?g|png|webp)$/i.test(attachments[previewAttachmentIndex].name) && previewPosition ? (
+                      <div
+                        className="message-attachment-preview"
+                        style={{ left: `${previewPosition.left}px`, top: `${previewPosition.top}px` }}
+                        aria-label={`Preview of ${attachments[previewAttachmentIndex].name}`}
+                      >
+                        <img src={attachments[previewAttachmentIndex].path} alt={attachments[previewAttachmentIndex].name} />
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <span className="message-counter">{message.length} / 4096</span>
+                  <div className="message-send-control">
+                    <span
+                      className={`message-selected-option-icon ${selectedMessageOption ? '' : 'is-empty'}`}
+                      aria-hidden={!selectedMessageOption}
+                        aria-label={selectedMessageOption === 'silent' ? 'Silent send selected' : selectedMessageOption === 'effect' ? 'Effect selected' : undefined}
+                        title={selectedMessageOption === 'silent' ? 'Silent send' : selectedMessageOption === 'effect' ? 'Effect' : undefined}
+                    >
+                        {selectedMessageOption === 'silent'
+                          ? '🔕'
+                          : selectedEffect?.emoticon || '✨'}
+                    </span>
+                    <button
+                      type="button"
+                      className="message-send-button"
+                      ref={messageOptionsButtonRef}
+                      aria-label="Send now"
+                      aria-expanded={messageOptionsOpen}
+                      aria-haspopup="menu"
+                      title="Message options"
+                      onClick={() => setMessageOptionsOpen((current) => !current)}
+                    >
+                      <Menu size={17} strokeWidth={1.8} aria-hidden="true" />
+                    </button>
+
+                    {messageOptionsOpen && (
+                      <div className="message-options-menu" ref={messageOptionsRef} role="menu" aria-label="Message options">
+                        <button
+                          type="button"
+                          className={selectedMessageOption === 'silent' ? 'is-selected' : ''}
+                          role="menuitemradio"
+                          aria-checked={selectedMessageOption === 'silent'}
+                          onClick={() => {
+                            setSelectedMessageOption((current) => current === 'silent' ? null : 'silent');
+                            setMessageOptionsOpen(false);
+                          }}
+                        >
+                          <span className="message-option-icon" aria-hidden="true">🔕</span>
+                          <span className="message-option-label">Silent sending</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedMessageOption === 'effect' ? 'is-selected' : ''}
+                          role="menuitemradio"
+                          aria-checked={selectedMessageOption === 'effect'}
+                          onClick={() => {
+                            if (selectedMessageOption === 'effect') {
+                              setSelectedMessageOption(null);
+                              setEffectMenuOpen(false);
+                              setMessageOptionsOpen(false);
+                              return;
+                            }
+                            setSelectedMessageOption('effect');
+                            setEffectMenuOpen(true);
+                          }}
+                        >
+                          <span className="message-option-icon" aria-hidden="true">✨</span>
+                          <span className="message-option-label">Effect</span>
+                        </button>
+                      </div>
+                    )}
+                    {messageOptionsOpen && selectedMessageOption === 'effect' && effectMenuOpen && (
+                      <div ref={effectMenuRef} className="message-effect-menu" role="menu" aria-label="Available Telegram effects">
+                        <div className="message-effect-menu-header">
+                          <span>Effect</span>
+                          <span>{availableEffects.length}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className={!selectedEffectId ? 'is-selected' : ''}
+                          role="menuitemradio"
+                          aria-checked={!selectedEffectId}
+                          onClick={() => {
+                            const isAlreadySelected = selectedEffectId === null;
+                            setSelectedEffectId(null);
+                            setSelectedMessageOption(isAlreadySelected ? null : 'effect');
+                            setEffectMenuOpen(false);
+                            setMessageOptionsOpen(false);
+                          }}
+                        >
+                          <span className="message-option-icon" aria-hidden="true">✦</span>
+                          <span className="message-option-label">Without effect</span>
+                        </button>
+
+                        {effectsLoading ? (
+                          <div className="message-effect-status" role="status">Loading effects…</div>
+                        ) : (
+                          <>
+                            {freeEffects.length > 0 && (
+                              <div className="message-effect-section-label">Free</div>
+                            )}
+                            {freeEffects.slice(0, 6).map((effect) => (
+                              <button
+                                key={effect.id}
+                                type="button"
+                                className={selectedEffectId === effect.id ? 'is-selected' : ''}
+                                role="menuitemradio"
+                                aria-checked={selectedEffectId === effect.id}
+                                onClick={() => {
+                                  const isAlreadySelected = selectedEffectId === effect.id;
+                                  setSelectedEffectId(isAlreadySelected ? null : effect.id);
+                                  setSelectedMessageOption(isAlreadySelected ? null : 'effect');
+                                  setEffectMenuOpen(false);
+                                  setMessageOptionsOpen(false);
+                                }}
+                              >
+                                <span className="message-option-icon" aria-hidden="true">{effect.emoticon}</span>
+                                <span className="message-option-label">Effect</span>
+                              </button>
+                            ))}
+                            {premiumEffects.length > 0 && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="message-effect-section-toggle"
+                                  aria-expanded={premiumEffectsOpen}
+                                  onClick={() => setPremiumEffectsOpen((current) => !current)}
+                                >
+                                  <span className="message-effect-section-label">Premium</span>
+                                  <span aria-hidden="true">{premiumEffectsOpen ? '⌃' : '⌄'}</span>
+                                </button>
+                                {premiumEffectsOpen && premiumEffects.map((effect) => (
+                                  <button
+                                    key={effect.id}
+                                    type="button"
+                                    className={selectedEffectId === effect.id ? 'is-selected' : ''}
+                                    role="menuitemradio"
+                                    aria-checked={selectedEffectId === effect.id}
+                                    onClick={() => {
+                                      const isAlreadySelected = selectedEffectId === effect.id;
+                                      setSelectedEffectId(isAlreadySelected ? null : effect.id);
+                                      setSelectedMessageOption(isAlreadySelected ? null : 'effect');
+                                      setEffectMenuOpen(false);
+                                      setMessageOptionsOpen(false);
+                                    }}
+                                  >
+                                    <span className="message-option-icon" aria-hidden="true">{effect.emoticon}</span>
+                                    <span className="message-option-label">Premium</span>
+                                  </button>
+                                ))}
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  className="message-attachment-input"
+                  type="file"
+                  multiple
+                  onChange={handleFileSelection}
+                />
               </div>
 
               <div className="field moment-field">
@@ -657,7 +1025,7 @@ export function SchedulePage(props: SchedulePageProps) {
                       <input className="moment-segment moment-year" value={dateYear} inputMode="numeric" maxLength={4} aria-label="Year" onChange={(event) => updateDatePart('year', event.target.value)} />
                     </div>
 
-                    <div className="moment-time-display">
+                    <div ref={timeDisplayRef} className="moment-time-display">
                       <Clock ref={timePickerRef} className="moment-time-icon" aria-hidden="true" size={18} strokeWidth={1.8} onClick={openTimePicker} />
                       <input className="moment-segment moment-time-hours" value={timeHours} inputMode="numeric" maxLength={2} aria-label="Hours" onChange={(event) => updateTimePart('hours', event.target.value)} />
                       <span className="moment-time-separator" aria-hidden="true">:</span>
@@ -701,6 +1069,7 @@ export function SchedulePage(props: SchedulePageProps) {
                           value={`${time.slice(0, 2)}:00`}
                           onChange={(event) => {
                             timeEditedRef.current = true;
+                            manualTimeEditedRef.current = false;
                             setTime(event.target.value);
                             setManualTime(event.target.value);
                             setTimePickerOpen(false);
@@ -744,7 +1113,21 @@ export function SchedulePage(props: SchedulePageProps) {
 
               <button
                 className={`action-button ${successPulse ? 'schedule-success' : ''}`}
-                onClick={() => handleSchedule()}
+                onClick={() => {
+                  if (!selectedChat) {
+                    handleSchedule();
+                    return;
+                  }
+                  handleSchedule({
+                    chatId: selectedChat.id,
+                    message,
+                    date,
+                    time,
+                    attachments: attachments.map((attachment) => attachment.path),
+                    silent: selectedMessageOption === 'silent',
+                    effect: selectedEffectId ?? undefined,
+                  });
+                }}
                 disabled={scheduling}
               >
                 {scheduling ? 'Scheduling…' : successPulse ? 'SEALED' : 'Seal it'}
@@ -766,11 +1149,11 @@ export function SchedulePage(props: SchedulePageProps) {
                 cancelingIds={cancelingIds}
                 sendingIds={sendingIds}
                 revealingId={revealingId}
+                selectedMessageOption={selectedMessageOption}
               />
             </section>
 
             <footer>
-              <span>Version 2.1.7</span>
               <span>{getTimezoneLabel()}</span>
             </footer>
           </>

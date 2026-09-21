@@ -85,6 +85,20 @@ export function useScheduler({
   const saveSent = useCallback((messages: ScheduledMessage[]) => saveSentToStorage(messages, historyScope), [historyScope]);
 
   useEffect(() => {
+    if (historyScope !== 'personal') return;
+
+    const refreshCurrentDateTime = () => {
+      if (!timeEditedRef.current) setTime(getCurrentTimeStr());
+      if (!dateEditedRef.current) setDate(getTodayStr());
+    };
+
+    refreshCurrentDateTime();
+    const intervalId = window.setInterval(refreshCurrentDateTime, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [historyScope]);
+
+  useEffect(() => {
     const loadedUpcoming = loadUpcoming();
     const loadedSent = loadSent();
 
@@ -101,6 +115,33 @@ export function useScheduler({
       const pendingMessages = getPendingSchedules(loadUpcoming());
 
       for (const pendingMessage of pendingMessages) {
+        const pendingTimestamp = new Date(pendingMessage.when).getTime();
+
+        if (Number.isFinite(pendingTimestamp) && pendingTimestamp <= Date.now()) {
+          const completedMessage: ScheduledMessage = {
+            ...pendingMessage,
+            status: 'sent',
+            sentAt: new Date().toISOString(),
+          };
+
+          setUpcoming((current) => {
+            const updated = current.filter((message) => message.id !== pendingMessage.id);
+            saveUpcoming(updated);
+            return updated;
+          });
+
+          setSent((current) => {
+            const updated = [
+              completedMessage,
+              ...current.filter((message) => message.id !== pendingMessage.id),
+            ];
+            saveSent(updated);
+            return updated;
+          });
+
+          continue;
+        }
+
         const result = await window.telegram.schedule({
           chatId: pendingMessage.chatId,
           message: pendingMessage.text,
@@ -110,6 +151,8 @@ export function useScheduler({
           attachments: pendingMessage.attachments ?? [],
           entities: pendingMessage.entities ?? [],
           replyMarkup: pendingMessage.replyMarkup,
+          silent: pendingMessage.silent,
+          effect: pendingMessage.effect,
         });
 
         if (cancelled) return;
@@ -202,6 +245,8 @@ export function useScheduler({
     attachments?: string[];
     entities?: RichTextEntity[];
     replyMarkup?: InlineKeyboardMarkup;
+    silent?: boolean;
+    effect?: string;
   }, repeatOptions: ScheduleRepeatOptions = { mode: 'none', occurrences: 1 }) {
     if (scheduling || schedulingLockRef.current) return;
 
@@ -250,11 +295,26 @@ export function useScheduler({
       return;
     }
 
-    if (whenDate.getTime() <= Date.now()) {
+    const isCurrentTime = scheduleDate === getTodayStr() && scheduleTime === getCurrentTimeStr();
+
+    if (whenDate.getTime() <= Date.now() && !isCurrentTime) {
       showNotification(
         'Schedule time must be in the future.',
         'warning',
         'Past time'
+      );
+      return;
+    }
+
+    if (isCurrentTime) {
+      void handleSendDraftNow(
+        scheduleChat,
+        scheduleMessage,
+        assistantSchedule?.attachments ?? [],
+        assistantSchedule?.entities ?? [],
+        assistantSchedule?.replyMarkup,
+        assistantSchedule?.silent === true,
+        assistantSchedule?.effect,
       );
       return;
     }
@@ -281,6 +341,8 @@ export function useScheduler({
     const attachments = assistantSchedule?.attachments ?? [];
     const entities = assistantSchedule?.entities ?? [];
     const replyMarkup = assistantSchedule?.replyMarkup;
+    const silent = assistantSchedule?.silent === true;
+    const effect = assistantSchedule?.effect;
     const occurrenceDates = getScheduleOccurrences(whenDate, repeatOptions);
     const duplicateExists = occurrenceDates.some((occurrenceDate) => {
       const when = occurrenceDate.toISOString();
@@ -313,6 +375,8 @@ export function useScheduler({
       createdAt: new Date().toISOString(),
       entities,
       replyMarkup,
+      silent,
+      effect,
     }));
 
     setUpcoming((current) => {
@@ -337,6 +401,8 @@ export function useScheduler({
             attachments,
             entities,
             replyMarkup,
+            silent,
+            effect,
           });
           results.push({ result, operationId: pendingMessage.operationId! });
         } catch (error) {
@@ -516,7 +582,7 @@ export function useScheduler({
 
         scheduleCancelled = true;
 
-        return window.telegram.send(msg.chatId, msg.text, msg.attachments ?? [], msg.entities ?? [], msg.replyMarkup);
+        return window.telegram.send(msg.chatId, msg.text, msg.attachments ?? [], msg.entities ?? [], msg.replyMarkup, msg.silent);
       })
       .then((result) => {
         setSendingIds((prev) => {
@@ -591,13 +657,15 @@ export function useScheduler({
     attachments: string[] = [],
     entities: RichTextEntity[] = [],
     replyMarkup?: InlineKeyboardMarkup,
+    silent = false,
+    effect?: string,
   ) {
     if (publishingDraft || !text.trim()) return false;
 
     setPublishingDraft(true);
 
     try {
-      const result = await window.telegram.send(chat.id, text, attachments, entities, replyMarkup);
+      const result = await window.telegram.send(chat.id, text, attachments, entities, replyMarkup, silent, effect);
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to send message.');
@@ -614,6 +682,8 @@ export function useScheduler({
         status: 'sent',
         sentAt: new Date().toISOString(),
         entities,
+        silent,
+        effect,
       };
 
       setSent((current) => {

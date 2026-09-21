@@ -180,6 +180,7 @@ const {
   getChatAvatar,
   getChatHistory,
   getContacts,
+  getAvailableEffects,
   resolveChat,
   sendMessage,
   scheduleMessage,
@@ -573,6 +574,26 @@ ipcMain.handle('telegram-contacts', async (event) => {
   }
 });
 
+ipcMain.handle('telegram-effects', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  try {
+    const effects = await getAvailableEffects();
+    return {
+      success: true,
+      effects
+    };
+  } catch (error) {
+    console.error('Telegram effects error:', error?.code || error?.name || 'unknown');
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
 
 // -------------------------
 // Find Telegram chat
@@ -623,7 +644,9 @@ ipcMain.handle('telegram-send', async (event, data) => {
       validated.message,
       validated.attachments,
       validated.entities,
-      validated.replyMarkup
+      validated.replyMarkup,
+      validated.silent,
+      validated.effect
     );
 
     return {
@@ -662,7 +685,9 @@ ipcMain.handle('telegram-schedule', async (event, data) => {
       validated.targetTimestamp,
       validated.attachments,
       validated.entities,
-      validated.replyMarkup
+      validated.replyMarkup,
+      validated.silent,
+      validated.effect
     );
 
     return {

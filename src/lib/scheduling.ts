@@ -9,6 +9,8 @@ export type PendingScheduleInput = Pick<
   attachments?: string[];
   entities?: RichTextEntity[];
   replyMarkup?: InlineKeyboardMarkup;
+  silent?: boolean;
+  effect?: string;
 };
 
 export type TelegramScheduledMessage = {

@@ -159,6 +159,10 @@ function isImageAttachment(attachment: WorkspaceAttachment) {
   return /\.(?:avif|gif|jpe?g|png|webp)$/i.test(attachment.name);
 }
 
+function isAudioAttachment(attachment: WorkspaceAttachment) {
+  return /\.(?:aac|aiff|flac|m4a|mp3|ogg|wav|wma)$/i.test(attachment.name);
+}
+
 function toFileUrl(filePath: string) {
   const normalizedPath = filePath.replace(/\\/g, '/');
   const encodedPath = normalizedPath
@@ -884,37 +888,51 @@ export function WorkspacePage({
 
               </div>
 
+              {attachmentError && <div role="alert" className="workspace-page-empty-attachments">{attachmentError}</div>}
+
               <div
                 className={`workspace-page-attachment-tray ${attachments.length === 0 ? 'is-empty' : ''}`}
                 aria-label="Attached files"
                 aria-hidden={attachments.length === 0}
               >
                 <div className="workspace-page-media-items">
-                  {attachments.map((file, index) => (
-                    <div key={`${file.name}-${index}`} className="workspace-page-attachment-card">
-                      {isImageAttachment(file) && file.path ? (
-                        <img
-                          src={toFileUrl(file.path)}
-                          alt=""
-                          className="workspace-page-attachment-thumbnail"
-                        />
-                      ) : (
-                        <div className="workspace-page-attachment-file-mark">FILE</div>
-                      )}
-                      <span className="workspace-page-attachment-name">{file.name}</span>
-                      <button
-                        type="button"
-                        className="workspace-page-attachment-remove"
-                        onClick={() => handleRemoveAttachment(index)}
-                        aria-label={`Remove ${file.name}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                  {attachments.map((file, index) => {
+                    const isAudio = isAudioAttachment(file);
+
+                    return (
+                      <div key={`${file.name}-${index}`} className="workspace-page-attachment-card">
+                        {isImageAttachment(file) && file.path ? (
+                          <img src={toFileUrl(file.path)} alt="" className="workspace-page-attachment-thumbnail" />
+                        ) : (
+                          <div
+                            className={`workspace-page-attachment-file-mark ${isAudio ? 'is-audio' : ''}`}
+                            aria-label={isAudio ? 'Audio file' : 'File'}
+                          >
+                            {isAudio ? (
+                              <svg className="workspace-page-attachment-music-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M9 18V7.7l9-2.1v9.1a2.7 2.7 0 1 1-2.7-2.7 3.4 3.4 0 0 1 .9.1V7.8l-6.2 1.5V18a2.7 2.7 0 1 1-2.7-2.7A3.5 3.5 0 0 1 9 18Z" fill="currentColor" />
+                              </svg>
+                            ) : (
+                              <svg className="workspace-page-attachment-document-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M7 3.5A2.5 2.5 0 0 1 9.5 1h6.2c.4 0 .8.1 1.1.4l2.8 2.8c.3.3.4.7.4 1.1v13.2A2.5 2.5 0 0 1 17.5 21h-8A2.5 2.5 0 0 1 7 18.5v-15Zm3 2.5h5v2h-5V6Zm0 4h7v2h-7v-2Zm0 4h7v2h-7v-2Zm-1-8h.01v2H9V6Z" fill="currentColor" />
+                              </svg>
+                            )}
+                          </div>
+                        )}
+                        <span className="workspace-page-attachment-name">{file.name}</span>
+                        <button
+                          type="button"
+                          className="workspace-page-attachment-remove"
+                          onClick={() => handleRemoveAttachment(index)}
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              {attachmentError && <div role="alert" className="workspace-page-empty-attachments">{attachmentError}</div>}
 
               <div className="workspace-page-action-row workspace-page-schedule-row">
                 <div className="workspace-page-media-row">
@@ -937,6 +955,7 @@ export function WorkspacePage({
                     className="workspace-page-hidden-file-input"
                   />
                 </div>
+
                 <div className="workspace-page-action-left-group">
                   <button
                     type="button"

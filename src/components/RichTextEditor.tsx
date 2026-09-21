@@ -24,11 +24,24 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
   const [editorFocused, setEditorFocused] = useState(false);
   const [linkUrl, setLinkUrl] = useState('https://');
 
+  const syncEditorHeight = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const baseHeight = 180;
+    const lineHeight = 24;
+    const nextHeight = Math.max(baseHeight, editor.scrollHeight + lineHeight);
+
+    editor.style.height = `${nextHeight}px`;
+    editor.style.minHeight = `${nextHeight}px`;
+  };
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || document.activeElement === editor) return;
     const nextHtml = richTextToHtml(text, entities);
     if (editor.innerHTML !== nextHtml) editor.innerHTML = nextHtml;
+    syncEditorHeight();
   }, [text, entities]);
 
   const emitChange = () => {
@@ -42,6 +55,7 @@ export function RichTextEditor({ text, entities, onChange, inputRef, stageConten
       editorRef.current.innerHTML = richTextToHtml(limited.text, limited.entities);
     }
     onChange(limited.text, limited.entities);
+    syncEditorHeight();
   };
 
   const handleBeforeInput = (event: React.FormEvent<HTMLDivElement>) => {
