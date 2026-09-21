@@ -5677,3 +5677,20 @@ textarea:active,
   border-bottom: 1px solid rgba(154, 168, 184, 0.2) !important;
   transition: background-color 120ms ease, color 120ms ease !important;
 }
+
+.chat-field .chat-picker-current {
+  gap: 0;
+}
+
+.chat-field .chat-picker-current-avatar {
+  position: absolute;
+  left: -38px;
+  top: 50%;
+  transform: translateY(calc(-50% - 2px));
+}
+
+.chat-field .chat-picker-current-copy {
+  width: 100%;
+  margin-left: 0;
+  padding-left: 0;
+}
