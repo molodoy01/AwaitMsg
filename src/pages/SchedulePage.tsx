@@ -8,9 +8,10 @@ import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
 import { getMessageMaxLength, insertMessageText, limitMessageText } from '@/lib/messageLimits';
 import type { AssistantIntent } from '@/hooks/useAssistant';
-import type { Chat, NotificationState, ScheduledMessage } from '@/types';
+import type { Chat, ChatPermissions, NotificationState, ScheduledMessage } from '@/types';
 import { shouldShowTopbar } from '@/lib/authLayout';
 import { useLocale } from '@/lib/i18n';
+import { getMessageEffectPayload, isEffectSelectionIncomplete } from '@/lib/messageEffects';
 
 type SchedulePageProps = {
   message: string;
@@ -45,6 +46,7 @@ type SchedulePageProps = {
   handleForgetAccount: () => Promise<void>;
   chats: Chat[];
   selectedChat: Chat | null;
+  selectedChatPermissions: ChatPermissions | null;
   setSelectedChat: Dispatch<SetStateAction<Chat | null>>;
   removeModal: { show: boolean; chat: Chat | null };
   setRemoveModal: Dispatch<SetStateAction<{ show: boolean; chat: Chat | null }>>;
@@ -128,6 +130,7 @@ export function SchedulePage(props: SchedulePageProps) {
     handleForgetAccount,
     chats,
     selectedChat,
+    selectedChatPermissions,
     setSelectedChat,
     removeModal,
     setRemoveModal,
@@ -437,7 +440,7 @@ export function SchedulePage(props: SchedulePageProps) {
         {showTopbar && (
           <header className="topbar">
             <div className="topbar-identity">
-              <div className="brand">AWAITMSG</div>
+              <div className="brand">XMSGi</div>
             </div>
 
             <div className="topbar-actions">
@@ -513,6 +516,7 @@ export function SchedulePage(props: SchedulePageProps) {
           <div className="connection-stage" aria-hidden="true" />
         ) : !connected ? (
           <section className={`auth-panel ${showAuthForm ? 'is-auth-open' : ''}`}>
+            <div className="auth-brand" aria-label="XMSGi">XMSGi</div>
             <div className="auth-language-switch" role="group" aria-label={t('language.title')}>
               <button type="button" className={locale === 'en' ? 'is-selected' : ''} onClick={() => setLocale('en')} aria-pressed={locale === 'en'}>
                 EN
@@ -522,7 +526,6 @@ export function SchedulePage(props: SchedulePageProps) {
                 RU
               </button>
             </div>
-            <span className="auth-version">Version 2.1.7</span>
             <div className="auth-intro">
               <div className="auth-hero-copy" aria-label={t('hero.signInIntro')}>
                 <span className="auth-hero-line auth-hero-line-main">
@@ -760,6 +763,11 @@ export function SchedulePage(props: SchedulePageProps) {
                   onRemoveChat={handleRemoveChat}
                   onError={(msg, title) => showNotification(msg, 'error', title)}
                 />
+                {selectedChatPermissions?.canSend === false && (
+                  <p className="chat-permission-warning" role="status">
+                    {t('chat.cannotSend')}
+                  </p>
+                )}
               </div>
 
               <div className="field message-field">
@@ -769,6 +777,8 @@ export function SchedulePage(props: SchedulePageProps) {
                   {!message && <span className="message-placeholder" aria-hidden="true">{t('composer.messagePlaceholder')}</span>}
                   <textarea
                     value={message}
+                    disabled={selectedChatPermissions?.canSend === false}
+                    title={selectedChatPermissions?.canSend === false ? t('chat.cannotSendReason') : undefined}
                     onChange={(event) => setMessage(limitMessageText(event.target.value, messageMaxLength))}
                     onPaste={(event) => {
                       event.preventDefault();
@@ -889,14 +899,12 @@ export function SchedulePage(props: SchedulePageProps) {
                   <span className="message-counter">{message.length} / {messageMaxLength}</span>
                   <div className="message-send-control">
                     <span
-                      className={`message-selected-option-icon ${selectedMessageOption ? '' : 'is-empty'}`}
-                      aria-hidden={!selectedMessageOption}
-                        aria-label={selectedMessageOption === 'silent' ? t('composer.silentSelected') : selectedMessageOption === 'effect' ? t('composer.effectSelected') : undefined}
-                        title={selectedMessageOption === 'silent' ? t('composer.silent') : selectedMessageOption === 'effect' ? t('composer.effect') : undefined}
+                      className={`message-selected-option-icon ${selectedMessageOption === 'silent' || selectedEffectId ? '' : 'is-empty'}`}
+                      aria-hidden={selectedMessageOption !== 'silent' && !selectedEffectId}
+                      aria-label={selectedMessageOption === 'silent' ? t('composer.silentSelected') : selectedEffectId ? t('composer.effectSelected') : undefined}
+                      title={selectedMessageOption === 'silent' ? t('composer.silent') : selectedEffectId ? t('composer.effect') : undefined}
                     >
-                        {selectedMessageOption === 'silent'
-                          ? '🔕'
-                          : selectedEffect?.emoticon || '✨'}
+                      {selectedMessageOption === 'silent' ? '🔕' : selectedEffectId ? selectedEffect?.emoticon : ''}
                     </span>
                     <button
                       type="button"
@@ -1145,6 +1153,11 @@ export function SchedulePage(props: SchedulePageProps) {
               <button
                 className={`action-button ${successPulse ? 'schedule-success' : ''}`}
                 onClick={() => {
+                  if (isEffectSelectionIncomplete(selectedMessageOption, selectedEffectId)) {
+                    showNotification(t('composer.effectRequired'), 'error', t('composer.effect'));
+                    return;
+                  }
+
                   if (!selectedChat) {
                     handleSchedule();
                     return;
@@ -1156,10 +1169,10 @@ export function SchedulePage(props: SchedulePageProps) {
                     time,
                     attachments: attachments.map((attachment) => attachment.path),
                     silent: selectedMessageOption === 'silent',
-                    effect: selectedEffectId ?? undefined,
+                    effect: getMessageEffectPayload(selectedMessageOption, selectedEffectId),
                   });
                 }}
-                disabled={scheduling}
+                disabled={scheduling || selectedChatPermissions?.canSend === false || selectedChatPermissions?.canSchedule === false}
               >
                 {scheduling ? t('composer.scheduling') : successPulse ? t('composer.sealed') : t('composer.seal')}
               </button>

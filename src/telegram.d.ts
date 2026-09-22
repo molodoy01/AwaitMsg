@@ -94,6 +94,9 @@ declare global {
       login: (data: { API_ID?: string | number; API_HASH?: string; phoneNumber?: string; phone?: string; password?: string; phoneCode?: string; apiId?: string | number; apiHash?: string }) => Promise<{ success: boolean; requiresCode?: boolean; requiresPassword?: boolean; nextStep?: string; error?: string; isCodeViaApp?: boolean }>;
       connect: () => Promise<{ success: boolean; error?: string }>;
       getChats: () => Promise<{ success: boolean; chats?: { id: string; name: string; username?: string; type?: 'private' | 'group' | 'supergroup' | 'channel' | 'unknown'; avatarDataUrl?: string }[]; error?: string }>;
+      getChatPermissions: (chatId: string) => Promise<{ success: boolean; permissions?: { canView: boolean; canSend: boolean | null; canSchedule: boolean | null; error?: string }; error?: string }>;
+      loadSavedChats: () => Promise<{ id: string; name: string; username?: string; type?: 'private' | 'group' | 'supergroup' | 'channel' | 'unknown'; avatarDataUrl?: string }[]>;
+      saveSavedChats: (chats: { id: string; name: string; username?: string; type?: 'private' | 'group' | 'supergroup' | 'channel' | 'unknown'; avatarDataUrl?: string }[]) => Promise<{ success: boolean }>;
       getChatAvatar: (chatId: string) => Promise<{ success: boolean; avatarDataUrl?: string; error?: string }>;
       findChat: (query: string) => Promise<{
         success: boolean;

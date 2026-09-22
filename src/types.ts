@@ -1,9 +1,19 @@
+export type ChatPermissionValue = boolean | null;
+
+export interface ChatPermissions {
+  canView: boolean;
+  canSend: ChatPermissionValue;
+  canSchedule: ChatPermissionValue;
+  error?: string;
+}
+
 export interface Chat {
   id: string;
   name: string;
   username?: string;
   type?: 'private' | 'group' | 'supergroup' | 'channel' | 'unknown';
   avatarDataUrl?: string;
+  permissions?: ChatPermissions;
 }
 
 export interface Template {

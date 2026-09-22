@@ -29,6 +29,15 @@ contextBridge.exposeInMainWorld('telegram', {
   getChats: () =>
     ipcRenderer.invoke('telegram-chats'),
 
+  getChatPermissions: (chatId) =>
+    ipcRenderer.invoke('telegram-chat-permissions', chatId),
+
+  loadSavedChats: () =>
+    ipcRenderer.invoke('chat-storage-load'),
+
+  saveSavedChats: (chats) =>
+    ipcRenderer.invoke('chat-storage-save', chats),
+
   getChatAvatar: (chatId) =>
     ipcRenderer.invoke('telegram-chat-avatar', chatId),
 

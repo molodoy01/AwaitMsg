@@ -19,6 +19,14 @@ const {
   trackOperation,
   withTimeout: withLifecycleTimeout
 } = require('./telegram-lifecycle.cjs');
+const {
+  normalizeQuery,
+  normalizePhone,
+  isPhoneLikeQuery,
+  isUsernameQuery
+} = require('./telegram-search.cjs');
+const { findDialogByTitle } = require('./telegram-dialog-search.cjs');
+const { deriveChatPermissions, isPermissionError } = require('./telegram-permissions.cjs');
 
 function normalizeSessionString(value) {
   return typeof value === 'string'
@@ -1120,6 +1128,76 @@ function getChatAvatar(chatId) {
   return trackTelegramOperation('getChatAvatar', () => getChatAvatarInternal(chatId));
 }
 
+function getPermissionStatus({ canView = true, canSend = null, canSchedule = null, error = '' } = {}) {
+  return { canView, canSend, canSchedule, ...(error ? { error } : {}) };
+}
+
+async function getChatPermissionsInternal(chatId) {
+  if (!client) await connectTelegram();
+
+  try {
+    const entity = await telegramRequest(() => client.getEntity(chatId));
+    if (!entity) return getPermissionStatus({ canView: false });
+
+    if (entity instanceof Api.User || entity?.className === 'User') {
+      return getPermissionStatus(deriveChatPermissions({ entityClass: 'User' }));
+    }
+
+    if (entity instanceof Api.Chat || entity?.className === 'Chat') {
+      const full = await telegramRequest(() => client.api.messages.getFullChat({ chatId: entity.id }));
+      const fullChat = full?.fullChat;
+      const rights = entity.defaultBannedRights || fullChat?.defaultBannedRights;
+      return getPermissionStatus(deriveChatPermissions({ entityClass: 'Chat', defaultBannedRights: rights }));
+    }
+
+    if (entity instanceof Api.Channel || entity?.className === 'Channel') {
+      const full = await telegramRequest(() => client.api.channels.getFullChannel({ channel: entity }));
+      let participant = null;
+
+      try {
+        participant = await telegramRequest(() => client.getParticipant(entity, 'me'));
+      } catch (error) {
+        if (isPermissionError(error)) {
+          return getPermissionStatus({ canView: true, canSend: false, canSchedule: false, error: 'CHAT_WRITE_FORBIDDEN' });
+        }
+      }
+
+      const participantClass = participant?.participant?.className || participant?.className || '';
+      const participantRights = participant?.participant?.bannedRights || participant?.bannedRights;
+      const adminRights = participant?.participant?.adminRights || participant?.adminRights;
+      const isCreator = participantClass === 'ChannelParticipantCreator';
+      const isAdmin = participantClass === 'ChannelParticipantAdmin';
+      const isBroadcast = entity.megagroup !== true;
+
+      const defaultRights = entity.defaultBannedRights || full?.fullChat?.defaultBannedRights;
+      return getPermissionStatus(deriveChatPermissions({
+        entityClass: 'Channel',
+        megagroup: entity.megagroup === true,
+        defaultBannedRights: defaultRights,
+        participantClass: isCreator
+          ? 'ChannelParticipantCreator'
+          : isAdmin
+            ? 'ChannelParticipantAdmin'
+            : participantClass,
+        participantRights,
+        adminRights,
+      }));
+    }
+
+    return getPermissionStatus();
+  } catch (error) {
+    if (isPermissionError(error)) {
+      return getPermissionStatus({ canView: true, canSend: false, canSchedule: false, error: 'CHAT_WRITE_FORBIDDEN' });
+    }
+
+    return getPermissionStatus({ error: 'PERMISSION_UNKNOWN' });
+  }
+}
+
+function getChatPermissions(chatId) {
+  return trackTelegramOperation('getChatPermissions', () => getChatPermissionsInternal(chatId));
+}
+
 function toPreviewNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
@@ -1355,44 +1433,18 @@ function getAvailableEffects() {
   return trackTelegramOperation('getAvailableEffects', getAvailableEffectsInternal);
 }
 
-// =========================================================
-// NORMALIZE SEARCH QUERY
-// =========================================================
+function getResolvedChatType(entity) {
+  const publicType = getPublicChatType(entity);
 
-function normalizeQuery(value) {
+  if (publicType) {
+    return publicType;
+  }
 
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(
-      /^https?:\/\/t\.me\//i,
-      ''
-    )
-    .replace(
-      /^t\.me\//i,
-      ''
-    )
-    .replace(
-      /^@/,
-      ''
-    )
-    .split('?')[0]
-    .split('#')[0]
-    .replace(
-      /\/$/,
-      ''
-    )
-    .trim();
-}
+  if (entity instanceof Api.User || entity?.className === 'User') {
+    return 'private';
+  }
 
-// =========================================================
-// NORMALIZE PHONE
-// =========================================================
-
-function normalizePhone(value) {
-
-  return String(value || '')
-    .replace(/\D/g, '');
+  return null;
 }
 
 function getPublicChatType(entity) {
@@ -1454,43 +1506,14 @@ async function resolveChatByTitleInDialogs(query) {
   const myId = me?.id?.toString();
 
   try {
-    const dialogs = await telegramRequest(() => withTimeout(
-      client.getDialogs({
-        limit: 200
-      }),
-      REQUEST_TIMEOUT,
-      'Telegram dialog title lookup'
-    ));
-
-    for (const dialog of dialogs || []) {
-      const entity = dialog?.entity || null;
-
-      if (!entity) {
-        continue;
-      }
-
-      const publicType = getPublicChatType(entity);
-
-      if (!publicType) {
-        continue;
-      }
-
-      if (myId && entity.id?.toString() === myId) {
-        continue;
-      }
-
-      const name = getEntityDisplayName(entity);
-
-      if (normalizeQuery(name) === normalized) {
-        return {
-          id: entity.id?.toString(),
-          name,
-          username: entity.username || '',
-          phone: entity.phone || '',
-          type: publicType
-        };
-      }
-    }
+    return await findDialogByTitle(client, normalized, {
+      excludeId: myId,
+      maxResults: 500,
+      getName: (entity, dialog) => dialog?.name || getEntityDisplayName(entity),
+      getType: (entity) => getResolvedChatType(entity),
+      getUsername: (entity) => entity?.username || '',
+      getPhone: (entity) => entity?.phone || ''
+    });
   } catch (error) {
     if (error?.code === 'TELEGRAM_SESSION_INVALID') {
       throw error;
@@ -1702,6 +1725,12 @@ async function resolveChatInternal(query) {
     };
   }
 
+  if (isPhoneLikeQuery(originalQuery)) {
+    throw new Error(
+      'Could not find a Telegram contact for phone: ' + originalQuery
+    );
+  }
+
   // =======================================================
   // 6. CLEAN USERNAME
   // =======================================================
@@ -1726,6 +1755,12 @@ async function resolveChatInternal(query) {
     return dialogMatch;
   }
 
+  if (!isUsernameQuery(originalQuery)) {
+    throw new Error(
+      'Could not find a Telegram chat: ' + originalQuery
+    );
+  }
+
   // =======================================================
   // 8. DIRECT TELEGRAM SEARCH
   // =======================================================
@@ -1748,11 +1783,11 @@ async function resolveChatInternal(query) {
       );
     }
 
-    const type = getPublicChatType(entity);
+    const type = getResolvedChatType(entity);
 
     if (!type) {
       throw new Error(
-        'Resolved Telegram entity is not a public group, supergroup or channel'
+        'Resolved Telegram entity is not a supported chat'
       );
     }
 
@@ -2192,18 +2227,24 @@ async function scheduleMessageInternal(
 }
 
 function scheduleMessage(chatId, message, date, time, targetTimestamp, attachments, entities, replyMarkup, silent, effect) {
-  return trackTelegramOperation('schedule', () => scheduleMessageInternal(
-    chatId,
-    message,
-    date,
-    time,
-    targetTimestamp,
-    attachments,
-    entities,
-    replyMarkup,
-    silent,
-    effect
-  ));
+  return trackTelegramOperation('schedule', async () => {
+    try {
+      return await scheduleMessageInternal(
+        chatId,
+        message,
+        date,
+        time,
+        targetTimestamp,
+        attachments,
+        entities,
+        replyMarkup,
+        silent,
+        effect
+      );
+    } catch (error) {
+      throw error;
+    }
+  });
 }
 
 // =========================================================
@@ -2325,6 +2366,7 @@ function cancelScheduledMessage(chatId, messageId, message, date, time) {
     loginUser,
     connectTelegram,
     getChats,
+    getChatPermissions,
     getChatAvatar,
     getChatHistory,
     getContacts,
@@ -2352,9 +2394,14 @@ module.exports = {
   loginUser: (...args) => defaultCore.loginUser(...args),
   connectTelegram: (...args) => defaultCore.connectTelegram(...args),
   getChats: (...args) => defaultCore.getChats(...args),
+  getChatPermissions: (...args) => defaultCore.getChatPermissions(...args),
   getChatAvatar: (...args) => defaultCore.getChatAvatar(...args),
   getChatHistory: (...args) => defaultCore.getChatHistory(...args),
   getContacts: (...args) => defaultCore.getContacts(...args),
+  normalizeQuery,
+  normalizePhone,
+  isPhoneLikeQuery,
+  isUsernameQuery,
   getAvailableEffects: (...args) => defaultCore.getAvailableEffects(...args),
   resolveChat: (...args) => defaultCore.resolveChat(...args),
   sendMessage: (...args) => defaultCore.sendMessage(...args),

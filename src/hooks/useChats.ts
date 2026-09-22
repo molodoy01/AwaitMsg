@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import type { Chat } from '@/types';
+import type { Chat, ChatPermissions } from '@/types';
 import {
-  loadChats,
+  loadPersistentChats,
   loadHiddenChats,
-  saveChats,
+  savePersistentChats,
   saveHiddenChats,
 } from '@/lib/storage';
 
 export function useChats({ connected }: { connected: boolean }) {
   const [chats, setChats] = useState<Chat[]>([]);
+  const [persistentChatsReady, setPersistentChatsReady] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
+  const [chatPermissions, setChatPermissions] = useState<Record<string, ChatPermissions>>({});
   const [removeModal, setRemoveModal] = useState<{
     show: boolean;
     chat: Chat | null;
@@ -19,18 +21,26 @@ export function useChats({ connected }: { connected: boolean }) {
   });
 
   useEffect(() => {
-    const loadedChats = loadChats();
-    const hidden = loadHiddenChats();
+    let cancelled = false;
 
-    const visibleChats = loadedChats.filter(
-      (chat) => !hidden.includes(chat.id)
-    );
+    void loadPersistentChats().then((loadedChats) => {
+      if (cancelled) return;
 
-    setChats(visibleChats);
+      const hidden = loadHiddenChats();
+      const visibleChats = loadedChats.filter((chat) => !hidden.includes(chat.id));
 
-    if (visibleChats.length > 0) {
-      setSelectedChat(visibleChats[0]);
-    }
+      setChats(visibleChats);
+
+      if (visibleChats.length > 0) {
+        setSelectedChat(visibleChats[0]);
+      }
+
+      setPersistentChatsReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -42,17 +52,17 @@ export function useChats({ connected }: { connected: boolean }) {
       if (selectedIndex <= 0) return current;
 
       const ordered = [current[selectedIndex], ...current.slice(0, selectedIndex), ...current.slice(selectedIndex + 1)];
-      saveChats(ordered);
+      void savePersistentChats(ordered);
       return ordered;
     });
   }, [selectedChat]);
 
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !persistentChatsReady) return;
 
     window.telegram
       .getChats()
-      .then((result) => {
+      .then(async (result) => {
         if (!result.success || !result.chats) return;
 
         const hidden = loadHiddenChats();
@@ -65,12 +75,38 @@ export function useChats({ connected }: { connected: boolean }) {
           avatarDataUrl: chat.avatarDataUrl || '',
         }));
 
-        const visibleChats = telegramChats.filter(
+        const telegramChatIds = new Set(telegramChats.map((chat) => chat.id));
+        const savedChats = await loadPersistentChats();
+        const locallyAddedChats = savedChats.filter(
+          (chat) => !telegramChatIds.has(chat.id)
+        );
+        const allChats = [...telegramChats, ...locallyAddedChats];
+        const visibleChats = allChats.filter(
           (chat) => !hidden.includes(chat.id)
         );
 
-        setChats(visibleChats);
-        saveChats(visibleChats);
+        setChats((current) => {
+          const localChatsById = new Map(
+            savedChats
+              .filter((chat) => !telegramChatIds.has(chat.id))
+              .map((chat) => [chat.id, chat]),
+          );
+
+          current.forEach((chat) => {
+            if (!telegramChatIds.has(chat.id)) {
+              localChatsById.set(chat.id, chat);
+            }
+          });
+
+          const mergedChats = [
+            ...telegramChats,
+            ...localChatsById.values(),
+          ];
+          const nextChats = mergedChats.filter((chat) => !hidden.includes(chat.id));
+
+          void savePersistentChats(nextChats);
+          return nextChats;
+        });
 
         setSelectedChat((current) => {
           if (current) {
@@ -104,13 +140,15 @@ export function useChats({ connected }: { connected: boolean }) {
           );
           if (avatarByChatId.size === 0) return;
 
-          const updatedChats = visibleChats.map((chat) => {
-            const avatarDataUrl = avatarByChatId.get(chat.id);
-            return avatarDataUrl ? { ...chat, avatarDataUrl } : chat;
-          });
+          setChats((current) => {
+            const updatedChats = current.map((chat) => {
+              const avatarDataUrl = avatarByChatId.get(chat.id);
+              return avatarDataUrl ? { ...chat, avatarDataUrl } : chat;
+            });
 
-          setChats(updatedChats);
-          saveChats(updatedChats);
+            void savePersistentChats(updatedChats);
+            return updatedChats;
+          });
           setSelectedChat((current) => {
             if (!current) return current;
 
@@ -123,25 +161,68 @@ export function useChats({ connected }: { connected: boolean }) {
       .catch(() => {
         // Keep locally saved chats if Telegram chat loading fails.
       });
-  }, [connected]);
+  }, [connected, persistentChatsReady]);
+
+  useEffect(() => {
+    if (!connected || !selectedChat || typeof window.telegram?.getChatPermissions !== 'function') return;
+
+    let cancelled = false;
+    window.telegram.getChatPermissions(selectedChat.id).then((result) => {
+      if (cancelled || !result.success || !result.permissions) return;
+      setChatPermissions((current) => ({ ...current, [selectedChat.id]: result.permissions! }));
+    }).catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, selectedChat]);
+
+  async function refreshChatPermissions(chatId: string): Promise<ChatPermissions | null> {
+    if (typeof window.telegram?.getChatPermissions !== 'function') return null;
+
+    try {
+      const result = await window.telegram.getChatPermissions(chatId);
+      if (!result.success || !result.permissions) return null;
+      setChatPermissions((current) => ({ ...current, [chatId]: result.permissions! }));
+      return result.permissions;
+    } catch {
+      return null;
+    }
+  }
 
   function handleAddChat(chat: Chat) {
-    const exists = chats.some((c) => c.id === chat.id);
+    const existing = chats.find((c) => c.id === chat.id);
 
-    if (!exists) {
-      const updated = [...chats, chat];
-
-      setChats(updated);
-      saveChats(updated);
+    if (!existing) {
+      setChats((current) => {
+        const updated = [...current, chat];
+        void savePersistentChats(updated);
+        return updated;
+      });
 
       const hidden = loadHiddenChats().filter(
         (id) => id !== chat.id
       );
 
       saveHiddenChats(hidden);
+      setSelectedChat(chat);
+      return;
     }
 
-    setSelectedChat(chat);
+    const enriched = {
+      ...existing,
+      ...chat,
+      name: chat.name || existing.name,
+      username: chat.username || existing.username || '',
+      type: chat.type || existing.type,
+      avatarDataUrl: chat.avatarDataUrl || existing.avatarDataUrl || '',
+    };
+    setChats((current) => {
+      const updated = current.map((item) => item.id === chat.id ? enriched : item);
+      void savePersistentChats(updated);
+      return updated;
+    });
+    setSelectedChat(enriched);
   }
 
   function handleRemoveChat(chat: Chat) {
@@ -165,8 +246,11 @@ export function useChats({ connected }: { connected: boolean }) {
       (chat) => chat.id !== chatToRemove.id
     );
 
-    setChats(updated);
-    saveChats(updated);
+    setChats((current) => {
+      const latest = current.filter((chat) => chat.id !== chatToRemove.id);
+      void savePersistentChats(latest);
+      return latest;
+    });
 
     if (selectedChat?.id === chatToRemove.id) {
       setSelectedChat(updated.length > 0 ? updated[0] : null);
@@ -183,6 +267,9 @@ export function useChats({ connected }: { connected: boolean }) {
     setChats,
     selectedChat,
     setSelectedChat,
+    chatPermissions,
+    selectedChatPermissions: selectedChat ? chatPermissions[selectedChat.id] || null : null,
+    refreshChatPermissions,
     removeModal,
     setRemoveModal,
     handleAddChat,

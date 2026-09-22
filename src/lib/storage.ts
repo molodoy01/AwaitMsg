@@ -1,4 +1,4 @@
-import type { ScheduledMessage, Template } from '@/types';
+import type { Chat, ScheduledMessage, Template } from '@/types';
 
 export type MessageHistoryScope = 'personal' | 'workspace';
 
@@ -13,6 +13,7 @@ const SENT_KEYS: Record<MessageHistoryScope, string> = {
 const HIDDEN_CHATS_KEY = 'awaitmsg_hidden_chats';
 const CHATS_KEY = 'awaitmsg_chats';
 const TEMPLATES_KEY = 'awaitmsg_templates';
+let persistentChatWriteQueue = Promise.resolve();
 
 export function load<T>(key: string, fallback: T): T {
   try {
@@ -61,6 +62,36 @@ export function loadChats(): { id: string; name: string }[] {
 
 export function saveChats(chats: { id: string; name: string }[]): void {
   save(CHATS_KEY, chats);
+}
+
+export async function loadPersistentChats(): Promise<Chat[]> {
+  if (typeof window !== 'undefined' && typeof window.telegram?.loadSavedChats === 'function') {
+    const persistedChats = await window.telegram.loadSavedChats();
+    if (persistedChats.length > 0) return persistedChats;
+
+    const legacyChats = loadChats() as Chat[];
+    if (legacyChats.length > 0 && typeof window.telegram.saveSavedChats === 'function') {
+      await savePersistentChats(legacyChats);
+    }
+
+    return legacyChats;
+  }
+
+  return loadChats() as Chat[];
+}
+
+export async function savePersistentChats(chats: Chat[]): Promise<void> {
+  const write = async () => {
+    save(CHATS_KEY, chats);
+
+    if (typeof window !== 'undefined' && typeof window.telegram?.saveSavedChats === 'function') {
+      await window.telegram.saveSavedChats(chats);
+    }
+  };
+
+  const queuedWrite = persistentChatWriteQueue.then(write, write);
+  persistentChatWriteQueue = queuedWrite.catch(() => undefined);
+  return queuedWrite;
 }
 
 function isTemplate(value: unknown): value is Template {

@@ -24,10 +24,15 @@ const {
   validateSendPayload,
   assertTrustedRenderer
 } = require('./ipc-security.cjs');
+const { readChats, writeChats } = require('./chat-storage.cjs');
 
 const SECURE_CONFIG_PATH = path.join(
   app.getPath('userData'),
   'awaitmsg-secure-config.json'
+);
+const CHAT_STORAGE_PATH = path.join(
+  app.getPath('userData'),
+  'awaitmsg-chats.json'
 );
 
 let mainWindow = null;
@@ -177,6 +182,7 @@ const {
   forgetTelegramAccount,
   clearTelegramSession,
   getChats,
+  getChatPermissions,
   getChatAvatar,
   getChatHistory,
   getContacts,
@@ -232,7 +238,7 @@ function getGeminiErrorCode(error) {
 
 function createWindow() {
    mainWindow = new BrowserWindow({
-    title: 'AwaitMsg',
+    title: 'XMSGi',
     width: 1200,
     height: 800,
     minWidth: 900,
@@ -360,6 +366,25 @@ ipcMain.handle('gemini-set-enabled', async (event, enabled) => {
       error: error instanceof Error ? error.message : 'AI Assistant setting could not be updated.'
     };
   }
+});
+
+ipcMain.handle('chat-storage-load', async (event) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  return readChats(CHAT_STORAGE_PATH);
+});
+
+ipcMain.handle('chat-storage-save', async (event, chats) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  writeChats(CHAT_STORAGE_PATH, chats);
+  return { success: true };
 });
 
 ipcMain.handle('telegram-connect', async (event) => {
@@ -524,6 +549,22 @@ ipcMain.handle('telegram-chat-avatar', async (event, chatId) => {
   } catch (error) {
     console.error('Telegram chat avatar error:', error?.code || error?.name || 'unknown');
     return { success: false, avatarDataUrl: '', error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-chat-permissions', async (event, chatId) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+  const validatedChatId = validateChatId(chatId);
+
+  try {
+    return { success: true, permissions: await getChatPermissions(validatedChatId) };
+  } catch (error) {
+    console.error('Telegram chat permissions error:', error?.code || error?.name || 'unknown');
+    return { success: false, error: error.message };
   }
 });
 
@@ -744,7 +785,7 @@ ipcMain.handle('telegram-cancel', async (event, data) => {
 
 app.whenReady().then(() => {
 
-  console.log('AwaitMsg started.');
+  console.log('XMSGi started.');
   createWindow();
 
   app.on('activate', () => {
@@ -771,14 +812,14 @@ app.on('before-quit', (event) => {
 
   event.preventDefault();
   isQuitting = true;
-  console.log('AwaitMsg shutting down.');
+  console.log('XMSGi shutting down.');
 
   shutdownTelegram()
     .catch((error) => {
       console.error('Telegram shutdown error:', error?.code || error?.name || 'unknown');
     })
     .finally(() => {
-      console.log('AwaitMsg shutdown complete.');
+      console.log('XMSGi shutdown complete.');
       app.exit();
     });
 });

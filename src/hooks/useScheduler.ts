@@ -51,6 +51,7 @@ export type UseSchedulerOptions = {
   setAssistantPrompt: Dispatch<SetStateAction<string>>;
   setAssistantResponse: Dispatch<SetStateAction<string>>;
   setAssistantIntent: Dispatch<SetStateAction<AssistantIntentLike | null>>;
+  refreshChatPermissions?: (chatId: string) => Promise<unknown>;
 };
 
 export function useScheduler({
@@ -64,6 +65,7 @@ export function useScheduler({
   setAssistantPrompt,
   setAssistantResponse,
   setAssistantIntent,
+  refreshChatPermissions,
 }: UseSchedulerOptions) {
   const { t } = useLocale();
   const [date, setDate] = useState(getTodayStr());
@@ -455,6 +457,9 @@ export function useScheduler({
         }, TELEGRAM_CONFIRMATION_DELAY_MS);
 
         if (successful.length === 0) {
+          if (results[0]?.result.error && refreshChatPermissions) {
+            void refreshChatPermissions(chatId);
+          }
           showNotification(
             results[0]?.result.error || t('schedule.failed'),
             'error',
@@ -643,6 +648,8 @@ export function useScheduler({
           return next;
         });
 
+        if (refreshChatPermissions) void refreshChatPermissions(msg.chatId);
+
         showNotification(
           error instanceof Error
             ? error.message
@@ -701,6 +708,7 @@ export function useScheduler({
       window.setTimeout(() => setLastAction(null), 1500);
       return true;
     } catch (error) {
+      if (refreshChatPermissions) void refreshChatPermissions(chat.id);
       showNotification(
         error instanceof Error ? error.message : t('schedule.networkSending'),
         'error',
