@@ -9,6 +9,7 @@ interface Props {
   onRemoveChat: (chat: Chat) => void;
   onError?: (message: string, title: string) => void;
 }
+import { useLocale } from '@/lib/i18n';
 
 export function ChatPicker({
   chats,
@@ -18,6 +19,7 @@ export function ChatPicker({
   onRemoveChat,
   onError,
 }: Props) {
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const [addQuery, setAddQuery] = useState('');
   const [adding, setAdding] = useState(false);
@@ -50,13 +52,13 @@ export function ChatPicker({
           setAddQuery('');
           setOpen(false);
         } else if (onError) {
-          onError(result.error || 'That chat could not be found.', 'Chat not found');
+          onError(result.error || t('chat.notFoundMessage'), t('chat.notFound'));
         }
       })
       .catch(() => {
         setAdding(false);
         if (onError) {
-          onError('We could not reach Telegram while looking for that chat.', 'Connection problem');
+          onError(t('chat.connectionMessage'), t('chat.connectionProblem'));
         }
       });
   }
@@ -85,7 +87,11 @@ export function ChatPicker({
         </span>
         <span className="chat-picker-current-copy">
           <span className="chat-picker-current-name">
-            {selectedChat ? selectedChat.name : 'Choose a chat…'}
+            {selectedChat
+              ? selectedChat.name === 'Saved Messages'
+                ? t('chat.savedMessages')
+                : selectedChat.name
+              : t('chat.choose')}
           </span>
         </span>
       </div>
@@ -97,10 +103,16 @@ export function ChatPicker({
             value={addQuery}
             onChange={(e) => setAddQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Add chat, @name or phone"
+            placeholder={t('chat.addPlaceholder')}
           />
-          <button className="chat-add-button" onClick={handleAddChat} disabled={adding}>
-            {adding ? '...' : 'Add'}
+          <button
+            className="chat-add-button"
+            onClick={handleAddChat}
+            disabled={adding}
+            aria-label={t('chat.addTitle')}
+            title={t('chat.addTitle')}
+          >
+            {adding ? t('chat.adding') : '+'}
           </button>
         </div>
 
@@ -117,8 +129,20 @@ export function ChatPicker({
               {chat.avatarDataUrl ? <img src={chat.avatarDataUrl} alt="" /> : chat.name.slice(0, 1).toUpperCase()}
             </span>
             <span className="chat-option-copy">
-              <strong className="chat-option-name">{chat.name}</strong>
-              <span className="chat-option-type">{chat.name === 'Saved Messages' ? 'Saved Messages' : chat.type || 'Chat'}</span>
+              <strong className="chat-option-name">
+                {chat.name === 'Saved Messages' ? t('chat.savedMessages') : chat.name}
+              </strong>
+              {chat.name !== 'Saved Messages' && (
+                <span className="chat-option-type">
+                  {chat.type === 'private'
+                    ? t('chat.private')
+                    : chat.type === 'group'
+                      ? t('chat.group')
+                      : chat.type === 'channel'
+                        ? t('chat.channel')
+                        : chat.type || t('chat.type')}
+                </span>
+              )}
             </span>
             {selectedChat?.id === chat.id && (
               <button

@@ -21,6 +21,7 @@ import {
   getTodayStr,
   uid,
 } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 const TELEGRAM_CONFIRMATION_DELAY_MS = 3500;
 const REPEAT_SCHEDULE_DELAY_MS = 1500;
@@ -64,6 +65,7 @@ export function useScheduler({
   setAssistantResponse,
   setAssistantIntent,
 }: UseSchedulerOptions) {
+  const { t } = useLocale();
   const [date, setDate] = useState(getTodayStr());
   const [time, setTime] = useState(getCurrentTimeStr());
   const dateEditedRef = useRef(false);
@@ -168,7 +170,7 @@ export function useScheduler({
 
         if (!result.success) {
           showNotification(
-            result.error || 'Pending message could not be scheduled.',
+            result.error || t('schedule.pendingFailed'),
             'error',
             'Scheduling failed'
           );
@@ -181,9 +183,9 @@ export function useScheduler({
         showNotification(
           error instanceof Error
             ? error.message
-            : 'Pending message could not be recovered.',
+            : t('schedule.recoverFailed'),
           'error',
-          'Scheduling failed'
+          t('schedule.schedulingFailed')
         );
       }
     });
@@ -191,7 +193,7 @@ export function useScheduler({
     return () => {
       cancelled = true;
     };
-  }, [connected, loadUpcoming, saveUpcoming, showNotification]);
+  }, [connected, loadUpcoming, saveUpcoming, showNotification, t]);
 
   useEffect(() => {
     const moveDueMessages = () => {
@@ -259,27 +261,27 @@ export function useScheduler({
 
     if (!scheduleChat) {
       showNotification(
-        'Select a chat first.',
+        t('schedule.selectChat'),
         'warning',
-        'No chat selected'
+        t('schedule.noChatTitle')
       );
       return;
     }
 
     if (!scheduleMessage.trim()) {
       showNotification(
-        'Message cannot be empty.',
+        t('schedule.emptyMessage'),
         'warning',
-        'Empty message'
+        t('schedule.emptyMessageTitle')
       );
       return;
     }
 
     if (!scheduleDate || !scheduleTime) {
       showNotification(
-        'Set date and time.',
+        t('schedule.setDateTime'),
         'warning',
-        'Missing schedule'
+        t('schedule.missingDateTitle')
       );
       return;
     }
@@ -288,9 +290,9 @@ export function useScheduler({
 
     if (Number.isNaN(whenDate.getTime())) {
       showNotification(
-        'Invalid date or time.',
+        t('schedule.invalidDateTime'),
         'error',
-        'Invalid schedule'
+        t('schedule.invalidDateTitle')
       );
       return;
     }
@@ -299,9 +301,9 @@ export function useScheduler({
 
     if (whenDate.getTime() <= Date.now() && !isCurrentTime) {
       showNotification(
-        'Schedule time must be in the future.',
+        t('schedule.futureTime'),
         'warning',
-        'Past time'
+        t('schedule.pastTimeTitle')
       );
       return;
     }
@@ -322,16 +324,16 @@ export function useScheduler({
     const requestedOccurrences = Number(repeatOptions.occurrences);
     if (!Number.isInteger(requestedOccurrences) || requestedOccurrences < 1 || requestedOccurrences > MAX_SCHEDULE_OCCURRENCES) {
       showNotification(
-        `Choose between 1 and ${MAX_SCHEDULE_OCCURRENCES} runs.`,
+        t('schedule.repeatRange', { count: MAX_SCHEDULE_OCCURRENCES }),
         'warning',
-        'Invalid repeat count',
+        t('schedule.invalidRepeatCount'),
       );
       return;
     }
 
     const validWeekdays = new Set(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
     if (repeatOptions.days?.some((day) => !validWeekdays.has(day))) {
-      showNotification('Choose valid weekdays.', 'warning', 'Invalid repeat days');
+      showNotification(t('schedule.validWeekdays'), 'warning', t('schedule.invalidRepeatDays'));
       return;
     }
 
@@ -356,9 +358,9 @@ export function useScheduler({
 
     if (duplicateExists) {
       showNotification(
-        'An identical message is already scheduled for this chat and time.',
+        t('schedule.duplicate'),
         'warning',
-        'Duplicate schedule',
+        t('schedule.duplicateTitle'),
       );
       return;
     }
@@ -409,7 +411,7 @@ export function useScheduler({
           results.push({
             result: {
               success: false,
-              error: error instanceof Error ? error.message : 'Failed to schedule message.',
+              error: error instanceof Error ? error.message : t('schedule.failed'),
             },
             operationId: pendingMessage.operationId!,
           });
@@ -454,9 +456,9 @@ export function useScheduler({
 
         if (successful.length === 0) {
           showNotification(
-            results[0]?.result.error || 'Failed to schedule message.',
+            results[0]?.result.error || t('schedule.failed'),
             'error',
-            'Error'
+            t('schedule.errorTitle')
           );
           return;
         }
@@ -467,10 +469,10 @@ export function useScheduler({
         setAssistantIntent(null);
         showNotification(
           successful.length === 1
-            ? 'Message scheduled in Telegram.'
-            : `${successful.length} messages scheduled in Telegram.`,
+            ? t('schedule.scheduledOne')
+            : t('schedule.scheduledMany', { count: successful.length }),
           'success',
-          'Scheduled'
+          t('schedule.scheduledTitle')
         );
         setLastAction('scheduled');
         setSuccessPulse(true);
@@ -480,9 +482,9 @@ export function useScheduler({
         schedulingLockRef.current = false;
         setScheduling(false);
         showNotification(
-          error instanceof Error ? error.message : 'Network error while scheduling.',
+          error instanceof Error ? error.message : t('schedule.networkScheduling'),
           'error',
-          'Error'
+          t('schedule.errorTitle')
         );
       });
   }
@@ -495,9 +497,9 @@ export function useScheduler({
       msg.telegramMessageId === null
     ) {
       showNotification(
-        'Telegram message ID is missing.',
+        t('schedule.telegramIdMissing'),
         'error',
-        'Cannot unschedule'
+        t('schedule.cannotUnschedule')
       );
       return;
     }
@@ -528,15 +530,15 @@ export function useScheduler({
           });
 
           showNotification(
-            'Message unscheduled.',
+            t('schedule.unscheduled'),
             'info',
-            'Unscheduled'
+            t('schedule.unscheduledTitle')
           );
         } else {
           showNotification(
-            result.error || 'Failed to cancel.',
+            result.error || t('schedule.cancelFailed'),
             'error',
-            'Error'
+            t('schedule.errorTitle')
           );
         }
       })
@@ -550,9 +552,9 @@ export function useScheduler({
         showNotification(
           error instanceof Error
             ? error.message
-            : 'Network error while cancelling.',
+            : t('schedule.networkCancelling'),
           'error',
-          'Error'
+          t('schedule.errorTitle')
         );
       });
   }
@@ -577,7 +579,7 @@ export function useScheduler({
     cancelExistingSchedule
       .then((cancelResult) => {
         if (!cancelResult.success) {
-          throw new Error(cancelResult.error || 'The scheduled message could not be cancelled.');
+          throw new Error(cancelResult.error || t('schedule.cancelFailed'));
         }
 
         scheduleCancelled = true;
@@ -610,15 +612,15 @@ export function useScheduler({
             return updated;
           });
 
-          showNotification('Message sent to Telegram.', 'success', 'Sent');
+          showNotification(t('schedule.messageSent'), 'success', t('schedule.sent'));
 
           setRevealingId(msg.id);
           window.setTimeout(() => setRevealingId(null), 1500);
         } else {
           showNotification(
-            result.error || 'Failed to send.',
+            result.error || t('schedule.sendFailed'),
             'error',
-            'Error'
+            t('schedule.errorTitle')
           );
         }
       })
@@ -644,9 +646,9 @@ export function useScheduler({
         showNotification(
           error instanceof Error
             ? error.message
-            : 'Network error while sending.',
+            : t('schedule.networkSending'),
           'error',
-          'Error'
+          t('schedule.errorTitle')
         );
       });
   }
@@ -668,7 +670,7 @@ export function useScheduler({
       const result = await window.telegram.send(chat.id, text, attachments, entities, replyMarkup, silent, effect);
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to send message.');
+        throw new Error(result.error || t('schedule.sendFailed'));
       }
 
       const sentMessage: ScheduledMessage = {
@@ -694,15 +696,15 @@ export function useScheduler({
       setMessage('');
       setSuccessPulse(true);
       setLastAction('sent');
-      showNotification('Message sent to Telegram.', 'success', 'Sent');
+      showNotification(t('schedule.messageSent'), 'success', t('schedule.sent'));
       window.setTimeout(() => setSuccessPulse(false), 1500);
       window.setTimeout(() => setLastAction(null), 1500);
       return true;
     } catch (error) {
       showNotification(
-        error instanceof Error ? error.message : 'Network error while sending.',
+        error instanceof Error ? error.message : t('schedule.networkSending'),
         'error',
-        'Send failed',
+        t('schedule.sendFailedTitle'),
       );
       return false;
     } finally {
@@ -711,7 +713,7 @@ export function useScheduler({
   }
 
   function handleDeleteMessage(msg: ScheduledMessage) {
-    if (!window.confirm('Remove this message from local history?')) return;
+    if (!window.confirm(t('schedule.confirmDelete'))) return;
 
     if (msg.status !== 'sent') {
       setUpcoming((current) => {
@@ -733,16 +735,16 @@ export function useScheduler({
     saveSent([]);
 
     showNotification(
-      'Sent history cleared.',
+      t('schedule.sentCleared'),
       'info',
-      'Cleared'
+      t('schedule.clearedTitle')
     );
   }
 
   function handleClearAll() {
     if (upcoming.length === 0) return;
 
-    if (!window.confirm('Cancel all upcoming messages?')) return;
+    if (!window.confirm(t('schedule.confirmClearAll'))) return;
 
     const cancelable = upcoming.filter(
       (msg) =>
@@ -775,10 +777,10 @@ export function useScheduler({
 
       showNotification(
         failedIds.size > 0
-          ? 'Some messages could not be cancelled and remain in Upcoming.'
-          : 'All upcoming messages cancelled.',
+          ? t('schedule.partialCancellation')
+          : t('schedule.allCancelled'),
         failedIds.size > 0 ? 'warning' : 'success',
-        failedIds.size > 0 ? 'Partial cancellation' : 'Cleared',
+        failedIds.size > 0 ? t('schedule.partialCancellationTitle') : t('schedule.clearedTitle'),
       );
     });
   }

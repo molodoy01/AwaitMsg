@@ -8,15 +8,14 @@ import type { Chat } from '@/types';
 import { AppShell } from './AppShell';
 import { SchedulePage } from './pages/SchedulePage';
 import { SettingsPage } from './pages/SettingsPage';
-import { WorkspacePage } from './pages/WorkspacePage';
 
-type AppRoute = '/' | '/workspace' | '/settings';
+type AppRoute = '/' | '/settings';
 
 function getCurrentHashPath(): AppRoute {
   const hash = window.location.hash.replace(/^#/, '').trim();
   const path = hash ? (hash.startsWith('/') ? hash : `/${hash}`) : '/';
 
-  if (path === '/workspace' || path === '/settings') {
+  if (path === '/settings') {
     return path;
   }
 
@@ -28,7 +27,6 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<AppRoute>(getCurrentHashPath());
   const [scheduleActiveTab, setScheduleActiveTab] = useState<'upcoming' | 'sent'>('upcoming');
-  const [workspaceActiveTab, setWorkspaceActiveTab] = useState<'upcoming' | 'sent'>('upcoming');
 
   const {
     notification,
@@ -152,40 +150,6 @@ function App() {
     setAssistantIntent,
   });
 
-  const {
-    date: workspaceDate,
-    time: workspaceTime,
-    upcoming: workspaceUpcoming,
-    sent: workspaceSent,
-    scheduling: workspaceScheduling,
-    successPulse: workspaceSuccessPulse,
-    lastAction: workspaceLastAction,
-    revealingId: workspaceRevealingId,
-    cancelingIds: workspaceCancelingIds,
-    sendingIds: workspaceSendingIds,
-    publishingDraft: workspacePublishingDraft,
-    handleSchedule: handleWorkspaceSchedule,
-    handleCancelMessage: handleWorkspaceCancelMessage,
-    handleSendNow: handleWorkspaceSendNow,
-    handleSendDraftNow: handleWorkspaceSendDraftNow,
-    handleDeleteMessage: handleWorkspaceDeleteMessage,
-    handleClearSent: handleWorkspaceClearSent,
-    handleClearAll: handleWorkspaceClearAll,
-    setDate: setWorkspaceDate,
-    setTime: setWorkspaceTime,
-  } = useScheduler({
-    historyScope: 'workspace',
-    connected,
-    selectedChat,
-    chats,
-    message: '',
-    showNotification,
-    setMessage: () => {},
-    setAssistantPrompt: () => {},
-    setAssistantResponse: () => {},
-    setAssistantIntent: () => {},
-  });
-
   useEffect(() => {
     if (isSettingsOpen) {
       setIsConfirmingLogout(false);
@@ -241,43 +205,7 @@ function App() {
 
   return (
     <AppShell>
-      {route === '/workspace' ? (
-        <WorkspacePage
-          connected={connected}
-          chats={chats}
-          selectedChat={selectedChat}
-          setSelectedChat={setSelectedChat}
-          onAddChat={(chat) => handleAddChat(chat)}
-          onRemoveChat={handleRemoveChat}
-          removeModal={removeModal}
-          setRemoveModal={setRemoveModal}
-          confirmRemoveChat={confirmRemoveChat}
-          date={workspaceDate}
-          time={workspaceTime}
-          scheduling={workspaceScheduling}
-          successPulse={workspaceSuccessPulse}
-          upcoming={workspaceUpcoming}
-          sent={workspaceSent}
-          activeTab={workspaceActiveTab}
-          revealingId={workspaceRevealingId}
-          cancelingIds={workspaceCancelingIds}
-          sendingIds={workspaceSendingIds}
-          setDate={setWorkspaceDate}
-          setTime={setWorkspaceTime}
-          handleSchedule={handleWorkspaceSchedule}
-          handleSendDraftNow={handleWorkspaceSendDraftNow}
-          handleSendNow={handleWorkspaceSendNow}
-          handleDeleteMessage={handleWorkspaceDeleteMessage}
-          handleClearSent={handleWorkspaceClearSent}
-          handleClearAll={handleWorkspaceClearAll}
-          setActiveTab={setWorkspaceActiveTab}
-          publishingDraft={workspacePublishingDraft}
-          lastAction={workspaceLastAction}
-          notification={notification}
-          closeNotification={closeNotification}
-          handleCancelMessage={handleWorkspaceCancelMessage}
-        />
-      ) : route === '/settings' ? (
+      {route === '/settings' ? (
         renderSettingsPage()
       ) : (
         <SchedulePage

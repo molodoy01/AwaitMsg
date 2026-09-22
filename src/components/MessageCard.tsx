@@ -1,6 +1,7 @@
 import type { MessageOption, ScheduledMessage } from '@/types';
 import { formatDateTime } from '@/lib/utils';
 import { richTextToHtml } from '@/lib/richText';
+import { useLocale } from '@/lib/i18n';
 
 function toFileUrl(filePath: string) {
   const normalizedPath = filePath.replace(/\\/g, '/');
@@ -47,6 +48,7 @@ export function MessageCard({
   showCreatedMeta,
   selectedMessageOption = null,
 }: Props) {
+  const { t } = useLocale();
   const createdLabel = new Date(message.createdAt).toLocaleString([], {
     dateStyle: 'short',
     timeStyle: 'short',
@@ -86,16 +88,16 @@ export function MessageCard({
             className={`message-status ${message.status}`}
           >
             {isCanceling
-              ? 'Unscheduling…'
+              ? t('schedule.unscheduling')
               : isSending
-                ? 'Sending…'
+                ? t('schedule.sending')
                 : message.status === 'sent'
-                  ? 'Sent'
+                  ? t('schedule.sent')
                   : message.status === 'confirmed'
-                    ? 'Confirmed'
+                    ? t('schedule.confirmed')
                     : message.status === 'pending'
-                      ? 'Pending'
-                      : 'Scheduled'}
+                      ? t('schedule.pending')
+                        : t('schedule.scheduled')}
           </div>
         </div>
 
@@ -103,7 +105,7 @@ export function MessageCard({
           <div className="message-meta">
             {formatDateTime(message.when)}
               {messageOption && (
-                <span className="message-history-option-icon" aria-label="Selected sending option">
+                <span className="message-history-option-icon" aria-label={t('schedule.selectedOption')}>
                   {messageOption === 'silent' ? '🔕' : '✨'}
                 </span>
               )}
@@ -119,7 +121,7 @@ export function MessageCard({
 
         <div className="message-post-preview">
           {message.attachments && message.attachments.length > 0 && (
-            <div className="message-attachments" aria-label="Attachments">
+            <div className="message-attachments" aria-label={t('schedule.attachments')}>
               {message.attachments.map((attachment) => (
                 isImageAttachment(attachment) ? (
                   <img
@@ -151,9 +153,9 @@ export function MessageCard({
           <button
             className="msg-btn send-now"
             onClick={() => onSendNow(message)}
-            title="Send this message immediately"
+            title={t('schedule.sendNowTitle')}
           >
-            Send now
+            {t('composer.sendNow')}
           </button>
         )}
 
@@ -161,9 +163,9 @@ export function MessageCard({
           <button
             className="msg-btn delete"
             onClick={() => onDelete(message)}
-            title="Remove this message from the list"
+            title={t('schedule.deleteTitle')}
           >
-            Delete
+            {t('common.remove')}
           </button>
         )}
       </div>

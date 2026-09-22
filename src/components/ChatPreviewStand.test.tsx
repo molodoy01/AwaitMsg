@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { MutableRefObject } from 'react';
 import type { Chat } from '@/types';
+import { LocaleProvider } from '@/lib/i18n';
 import { ChatPreviewStand } from './ChatPreviewStand';
 
 const chats: Chat[] = [
@@ -15,24 +16,26 @@ function renderStand(chatListOpen = true) {
   const onToggleChatList = vi.fn();
 
   render(
-    <ChatPreviewStand
-      chats={chats}
-      selectedChat={chats[0]}
-      previewHistory={null}
-      previewHistoryLoading={false}
-      previewHistoryError=""
-      previewHistoryRetry={vi.fn()}
-      previewFeedRef={previewFeedRef}
-      draftText=""
-      draftEntities={[]}
-      inlineButtons={[]}
-      attachments={[]}
-      previewTime="12:00"
-      collapsed={false}
-      chatListOpen={chatListOpen}
-      onToggleChatList={onToggleChatList}
-      onSelectChat={onSelectChat}
-    />,
+    <LocaleProvider>
+      <ChatPreviewStand
+        chats={chats}
+        selectedChat={chats[0]}
+        previewHistory={null}
+        previewHistoryLoading={false}
+        previewHistoryError=""
+        previewHistoryRetry={vi.fn()}
+        previewFeedRef={previewFeedRef}
+        draftText=""
+        draftEntities={[]}
+        inlineButtons={[]}
+        attachments={[]}
+        previewTime="12:00"
+        collapsed={false}
+        chatListOpen={chatListOpen}
+        onToggleChatList={onToggleChatList}
+        onSelectChat={onSelectChat}
+      />
+    </LocaleProvider>,
   );
 
   return { onSelectChat, onToggleChatList };

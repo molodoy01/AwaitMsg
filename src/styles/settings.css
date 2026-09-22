@@ -99,6 +99,34 @@
   letter-spacing: 0;
 }
 
+.settings-language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.settings-language-switch button {
+  padding: 6px 3px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.settings-language-switch button.is-selected,
+.settings-language-switch button:hover,
+.settings-language-switch button:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
 .settings-section-heading-row {
   display: flex;
   align-items: baseline;

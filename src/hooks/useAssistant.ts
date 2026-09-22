@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Chat } from '@/types';
+import { useLocale } from '@/lib/i18n';
 
 const TEXT_ANIMATION_CONFIG = {
   typingSpeed: 28,
@@ -112,6 +113,7 @@ export type AssistantIntent = NonNullable<
 export type GeminiSettings = Awaited<ReturnType<Window['gemini']['getSettings']>>;
 
 export function useAssistant({ chats }: { chats: Chat[] }) {
+  const { t } = useLocale();
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [assistantResponse, setAssistantResponse] = useState('');
   const displayedAssistantResponse = useAnimatedText(assistantResponse);
@@ -129,9 +131,9 @@ export function useAssistant({ chats }: { chats: Chat[] }) {
   const [settingsError, setSettingsError] = useState('');
 
   const assistantExamples = [
-    'Tell me what to send and when — I’ll help you schedule it.',
-    'Message Sasha tomorrow at 10 so he does not forget the documents.',
-    'AI Assistant requires a Gemini API key — add yours in Settings.',
+    t('assistant.example1'),
+    t('assistant.example2'),
+    t('assistant.example3'),
   ];
 
   useEffect(() => {
@@ -158,14 +160,14 @@ export function useAssistant({ chats }: { chats: Chat[] }) {
       const result = await window.gemini.saveKey(settingsKey.trim());
 
       if (!result.success || !result.settings) {
-        setSettingsError(result.error || 'Gemini key could not be saved.');
+        setSettingsError(result.error || t('settings.geminiSaveFailed'));
         return;
       }
 
       setGeminiSettings(result.settings);
       setSettingsKey('');
     } catch {
-      setSettingsError('Gemini key could not be saved.');
+      setSettingsError(t('settings.geminiSaveFailed'));
     } finally {
       setSettingsBusy(false);
     }
@@ -181,14 +183,14 @@ export function useAssistant({ chats }: { chats: Chat[] }) {
       const result = await window.gemini.removeKey();
 
       if (!result.success || !result.settings) {
-        setSettingsError(result.error || 'Gemini key could not be removed.');
+        setSettingsError(result.error || t('settings.geminiRemoveFailed'));
         return;
       }
 
       setGeminiSettings(result.settings);
       setSettingsKey('');
     } catch {
-      setSettingsError('Gemini key could not be removed.');
+      setSettingsError(t('settings.geminiRemoveFailed'));
     } finally {
       setSettingsBusy(false);
     }
@@ -204,13 +206,13 @@ export function useAssistant({ chats }: { chats: Chat[] }) {
       const result = await window.gemini.setEnabled(!geminiSettings.enabled);
 
       if (!result.success || !result.settings) {
-        setSettingsError(result.error || 'AI Assistant setting could not be updated.');
+        setSettingsError(result.error || t('settings.assistantUpdateFailed'));
         return;
       }
 
       setGeminiSettings(result.settings);
     } catch {
-      setSettingsError('AI Assistant setting could not be updated.');
+      setSettingsError(t('settings.assistantUpdateFailed'));
     } finally {
       setSettingsBusy(false);
     }
@@ -242,10 +244,10 @@ export function useAssistant({ chats }: { chats: Chat[] }) {
             ? result.intent.clarification
             : ''
           : result.errorCode === 'setup_required'
-            ? 'Add a Gemini API key in Settings to use the assistant.'
+            ? t('assistant.addKey')
             : result.errorCode === 'quota'
-            ? 'AI is temporarily unavailable\nDaily AI limit reached. Please try again later.'
-            : 'Something went wrong\nPlease try again.'
+            ? t('assistant.quota')
+            : t('assistant.genericError')
       );
 
       setAssistantIntent(
@@ -254,7 +256,7 @@ export function useAssistant({ chats }: { chats: Chat[] }) {
           : null
       );
     } catch {
-      setAssistantResponse('Something went wrong\nPlease try again.');
+      setAssistantResponse(t('assistant.genericError'));
     } finally {
       setIsThinking(false);
     }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Chat, NotificationType } from '@/types';
 import { saveChats } from '@/lib/storage';
+import { useLocale } from '@/lib/i18n';
 
 export type TelegramAuthOptions = {
   showNotification: (message: string, type: NotificationType, title: string) => void;
@@ -16,6 +17,7 @@ export function useTelegramAuth({
   setChats,
   setSelectedChat,
 }: TelegramAuthOptions) {
+  const { t } = useLocale();
   const [connected, setConnected] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
   const [returningUserName, setReturningUserName] = useState('');
@@ -42,14 +44,14 @@ export function useTelegramAuth({
       });
 
       if (!result.success) {
-        const error = result.error || 'Authorization failed.';
+        const error = result.error || t('auth.authorizationFailed');
 
         if (
           authStep === 'code' &&
           /password|2fa|session_password_needed/i.test(error)
         ) {
           setAuthStep('password');
-          setAuthError('Enter your Telegram 2FA password to continue.');
+          setAuthError(t('auth.enterTwoFactor'));
         } else {
           setAuthError(error);
         }
@@ -59,7 +61,7 @@ export function useTelegramAuth({
 
       if (result.requiresPassword || result.nextStep === 'password') {
         setAuthStep('password');
-        setAuthError('Enter your Telegram 2FA password to continue.');
+        setAuthError(t('auth.enterTwoFactor'));
         return;
       }
 
@@ -77,12 +79,12 @@ export function useTelegramAuth({
       setAuthError(
         error instanceof Error
           ? error.message
-          : 'Authorization failed.'
+          : t('auth.authorizationFailed')
       );
     } finally {
       setAuthBusy(false);
     }
-  }, [authStep, phoneCode, phoneNumber, twoFactorPassword]);
+  }, [authStep, phoneCode, phoneNumber, twoFactorPassword, t]);
 
   const handleDisconnect = useCallback(async () => {
     setAuthBusy(true);
@@ -92,7 +94,7 @@ export function useTelegramAuth({
       const result = await window.telegram.signOutKeepSession();
 
       if (!result.success) {
-        setAuthError(result.error || 'Unable to disconnect account.');
+        setAuthError(result.error || t('auth.disconnectFailed'));
         return;
       }
 
@@ -112,12 +114,12 @@ export function useTelegramAuth({
       setAuthError(
         error instanceof Error
           ? error.message
-          : 'Unable to disconnect account.'
+          : t('auth.disconnectFailed')
       );
     } finally {
       setAuthBusy(false);
     }
-  }, [returningUserName, setChats, setIsSettingsOpen, setSelectedChat]);
+  }, [returningUserName, setChats, setIsSettingsOpen, setSelectedChat, t]);
 
   const handleWelcomeBack = useCallback(async () => {
     if (authBusy) return;
@@ -130,7 +132,7 @@ export function useTelegramAuth({
       const result = await window.telegram.welcomeBack();
 
       if (!result.success || !result.authState) {
-        setAuthError(result.error || 'Saved Telegram session could not be restored.');
+        setAuthError(result.error || t('auth.restoreFailed'));
         return;
       }
 
@@ -143,13 +145,13 @@ export function useTelegramAuth({
       setAuthError(
         error instanceof Error
           ? error.message
-          : 'Saved Telegram session could not be restored.'
+          : t('auth.restoreFailed')
       );
     } finally {
       setConnecting(false);
       setAuthBusy(false);
     }
-  }, [authBusy, returningUserName]);
+  }, [authBusy, returningUserName, t]);
 
   const handleForgetAccount = useCallback(async () => {
     if (authBusy) return;
@@ -161,7 +163,7 @@ export function useTelegramAuth({
       const result = await window.telegram.forgetAccount();
 
       if (!result.success || !result.authState) {
-        setAuthError(result.error || 'Telegram account could not be removed.');
+        setAuthError(result.error || t('auth.removeFailed'));
         return;
       }
 
@@ -181,19 +183,19 @@ export function useTelegramAuth({
       setAuthError(
         error instanceof Error
           ? error.message
-          : 'Telegram account could not be removed.'
+          : t('auth.removeFailed')
       );
     } finally {
       setAuthBusy(false);
     }
-  }, [authBusy, setChats, setSelectedChat]);
+  }, [authBusy, setChats, setSelectedChat, t]);
 
   useEffect(() => {
     const loadAuth = async () => {
       window.telegram.getAuthState()
         .then((authResult) => {
           if (!authResult.success || !authResult.authState) {
-            throw new Error(authResult.error || 'Unable to read Telegram auth state.');
+            throw new Error(authResult.error || t('auth.readStateFailed'));
           }
 
           const authState = authResult.authState;
@@ -215,7 +217,7 @@ export function useTelegramAuth({
             setConnectionResolved(true);
 
             if (!result.success) {
-              setAuthError(result.error || 'Saved session could not be connected.');
+              setAuthError(result.error || t('auth.connectFailed'));
             }
           });
         })
@@ -226,13 +228,13 @@ export function useTelegramAuth({
           setAuthError(
             error instanceof Error
               ? error.message
-              : 'Unable to read connection settings.'
+              : t('auth.readConnectionFailed')
           );
         });
     };
 
     loadAuth();
-  }, [showNotification]);
+  }, [showNotification, t]);
 
   useEffect(() => {
     if (typeof window.telegram?.onStatus !== 'function') return;
@@ -259,7 +261,7 @@ export function useTelegramAuth({
           setConnected(false);
           setConnecting(false);
           setConnectionResolved(true);
-          setAuthError(value.error || 'Telegram session expired. Please sign in again.');
+          setAuthError(value.error || t('auth.sessionExpired'));
         }
 
         if (
@@ -293,7 +295,7 @@ export function useTelegramAuth({
     };
 
     window.telegram.onStatus(handleStatus);
-  }, []);
+  }, [t]);
 
   return {
     connected,

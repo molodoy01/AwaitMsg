@@ -4,6 +4,7 @@ import type { MutableRefObject } from 'react';
 import type { Chat, PreviewChatHistory, RichTextEntity } from '@/types';
 import { toInlineKeyboardMarkup, type InlineButtonRow } from '@/lib/inlineKeyboard';
 import { InlineKeyboardPreview } from '@/components/InlineKeyboardPreview';
+import { useLocale } from '@/lib/i18n';
 import { richTextToHtml } from '@/lib/richText';
 import './ChatPreviewStand.css';
 
@@ -212,6 +213,7 @@ export function ChatPreviewStand({
   onSelectChat,
   onWallpaperChange,
 }: ChatPreviewStandProps) {
+  const { t } = useLocale();
   const savedWallpaper = useMemo(loadSavedWallpaper, []);
   const [wallpaperTheme, setWallpaperTheme] = useState<WallpaperTheme>(savedWallpaper.theme);
   const [customWallpaperImage, setCustomWallpaperImage] = useState(savedWallpaper.image);
@@ -388,8 +390,8 @@ export function ChatPreviewStand({
                     {chat.avatarDataUrl ? <img src={chat.avatarDataUrl} alt="" /> : chat.name.slice(0, 1).toUpperCase()}
                   </span>
                   <span className="chat-preview-chat-list-copy">
-                    <strong>{chat.name}</strong>
-                    <span>{chat.name === 'Saved Messages' ? 'Saved Messages' : chat.type || 'Chat'}</span>
+                    <strong>{chat.name === 'Saved Messages' ? t('chat.savedMessages') : chat.name}</strong>
+                    <span>{chat.name === 'Saved Messages' ? t('chat.savedMessages') : chat.type || t('chat.type')}</span>
                   </span>
                 </button>
               ))}

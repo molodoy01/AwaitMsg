@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MessageOption, ScheduledMessage } from '@/types';
 import { MessageCard } from './MessageCard';
+import { useLocale } from '@/lib/i18n';
 
 interface Props {
   upcoming: ScheduledMessage[];
@@ -36,9 +37,10 @@ export function MessagesPanel({
   cancelingIds,
   sendingIds,
   showAllMessages = false,
-  upcomingLabel = 'Upcoming',
+  upcomingLabel,
   selectedMessageOption = null,
 }: Props) {
+  const { t } = useLocale();
   const [showOlderUpcoming, setShowOlderUpcoming] = useState(false);
   const [showOlderSent, setShowOlderSent] = useState(false);
   const autoScrollFrameRef = useRef<number | null>(null);
@@ -280,7 +282,7 @@ export function MessagesPanel({
           }`}
           onClick={() => onTabChange('upcoming')}
         >
-          {upcomingLabel}
+            {upcomingLabel || t('schedule.upcoming')}
           <span className="tab-count">
             {upcoming.length}
           </span>
@@ -292,7 +294,7 @@ export function MessagesPanel({
           }`}
           onClick={() => onTabChange('sent')}
         >
-          History
+          {t('schedule.history')}
           <span className="tab-count">
             {sent.length}
           </span>
@@ -304,9 +306,9 @@ export function MessagesPanel({
           <button
             className="clear-history"
             onClick={onClearSent}
-            title="Clear message history"
+            title={t('schedule.clearHistoryTitle')}
           >
-            Clear history
+            {t('schedule.clearHistory')}
           </button>
         )}
 
@@ -315,9 +317,9 @@ export function MessagesPanel({
             <button
               className="clear-history"
               onClick={onClearAll}
-              title="Clear all upcoming messages"
+              title={t('schedule.clearAllTitle')}
             >
-              Clear all
+              {t('schedule.clearAll')}
             </button>
           )}
       </div>
@@ -329,7 +331,7 @@ export function MessagesPanel({
       >
         {upcomingSorted.length === 0 ? (
           <div className="empty-state">
-            Nothing waiting. Your next moment will appear here.
+            {t('schedule.emptyUpcoming')}
           </div>
         ) : (
           <div className="message-list">
@@ -361,7 +363,7 @@ export function MessagesPanel({
                   className="upcoming-older-toggle"
                   onClick={() => setShowOlderUpcoming((value) => !value)}
                 >
-                  {showOlderUpcoming ? 'Show less ↑' : 'Show more ↓'}
+                  {showOlderUpcoming ? t('schedule.showLess') : t('schedule.showMore')}
                 </button>
               </div>
             )}
@@ -400,7 +402,7 @@ export function MessagesPanel({
       >
         {sentSorted.length === 0 ? (
           <div className="empty-state">
-            Your sent messages will live here.
+            {t('schedule.emptySent')}
           </div>
         ) : (
           <div className="message-list">
@@ -430,7 +432,7 @@ export function MessagesPanel({
                   className="upcoming-older-toggle"
                   onClick={() => setShowOlderSent((value) => !value)}
                 >
-                  {showOlderSent ? 'Show less ↑' : 'Show more ↓'}
+                  {showOlderSent ? t('schedule.showLess') : t('schedule.showMore')}
                 </button>
               </div>
             )}

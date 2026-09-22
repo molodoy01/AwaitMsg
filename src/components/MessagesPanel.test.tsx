@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MessagesPanel } from './MessagesPanel';
 import type { ScheduledMessage } from '@/types';
+import { LocaleProvider } from '@/lib/i18n';
 
 const upcoming: ScheduledMessage[] = [
   {
@@ -31,7 +32,8 @@ const sent: ScheduledMessage[] = [
 describe('MessagesPanel', () => {
   it('renders queue and history tabs with counts', () => {
     render(
-      <MessagesPanel
+      <LocaleProvider>
+        <MessagesPanel
         upcoming={upcoming}
         sent={sent}
         assistantText=""
@@ -45,7 +47,8 @@ describe('MessagesPanel', () => {
         onClearAll={vi.fn()}
         cancelingIds={new Set()}
         sendingIds={new Set()}
-      />
+        />
+      </LocaleProvider>
     );
 
     expect(screen.getByRole('button', { name: /Upcoming/i })).toBeInTheDocument();
@@ -57,7 +60,8 @@ describe('MessagesPanel', () => {
     const onTabChange = vi.fn();
 
     render(
-      <MessagesPanel
+      <LocaleProvider>
+        <MessagesPanel
         upcoming={upcoming}
         sent={sent}
         assistantText=""
@@ -71,7 +75,8 @@ describe('MessagesPanel', () => {
         onClearAll={vi.fn()}
         cancelingIds={new Set()}
         sendingIds={new Set()}
-      />
+        />
+      </LocaleProvider>
     );
 
     fireEvent.click(screen.getByRole('button', { name: /History/i }));
@@ -82,7 +87,8 @@ describe('MessagesPanel', () => {
     const onClearSent = vi.fn();
 
     render(
-      <MessagesPanel
+      <LocaleProvider>
+        <MessagesPanel
         upcoming={upcoming}
         sent={sent}
         assistantText=""
@@ -96,7 +102,8 @@ describe('MessagesPanel', () => {
         onClearAll={vi.fn()}
         cancelingIds={new Set()}
         sendingIds={new Set()}
-      />
+        />
+      </LocaleProvider>
     );
 
     const clearButton = screen.getByRole('button', { name: /Clear history/i });

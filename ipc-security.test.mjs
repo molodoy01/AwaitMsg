@@ -29,17 +29,6 @@ describe('IPC security validation', () => {
     )).not.toThrow();
   });
 
-  it('accepts the same page when the renderer is on a hash route such as /workspace', () => {
-    expect(() => assertTrustedRenderer(
-      {
-        sender: webContents,
-        senderFrame: { url: `${fileUrl}#/workspace` }
-      },
-      webContents,
-      fileUrl
-    )).not.toThrow();
-  });
-
   it('rejects an unknown sender and a mismatched webContents', () => {
     expect(() => assertTrustedRenderer(
       {

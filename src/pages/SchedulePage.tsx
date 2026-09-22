@@ -6,10 +6,12 @@ import { Notification } from '@/components/Notification';
 import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
+import { getMessageMaxLength, insertMessageText, limitMessageText } from '@/lib/messageLimits';
 import { getTimezoneLabel } from '@/lib/utils';
 import type { AssistantIntent } from '@/hooks/useAssistant';
 import type { Chat, NotificationState, ScheduledMessage } from '@/types';
 import { shouldShowTopbar } from '@/lib/authLayout';
+import { useLocale } from '@/lib/i18n';
 
 type SchedulePageProps = {
   message: string;
@@ -170,6 +172,7 @@ export function SchedulePage(props: SchedulePageProps) {
     onOpenSettings,
     showNotification,
   } = props;
+  const { locale, setLocale, t } = useLocale();
 
   const showTopbar = shouldShowTopbar({ connected, signedOut });
   const datePickerRef = useRef<HTMLInputElement>(null);
@@ -201,6 +204,11 @@ export function SchedulePage(props: SchedulePageProps) {
   const selectedEffect = availableEffects.find((effect) => effect.id === selectedEffectId);
   const premiumEffects = availableEffects.filter((effect) => effect.premiumRequired === true);
   const freeEffects = availableEffects.filter((effect) => effect.premiumRequired !== true);
+  const messageMaxLength = getMessageMaxLength(attachments.length > 0);
+
+  useEffect(() => {
+    setMessage((current) => limitMessageText(current, messageMaxLength));
+  }, [messageMaxLength, setMessage]);
 
   const loadAvailableEffects = useCallback(async () => {
     if (!connected) {
@@ -246,20 +254,23 @@ export function SchedulePage(props: SchedulePageProps) {
 
     const remainingSlots = MAX_ATTACHMENTS - attachments.length;
     if (remainingSlots <= 0) {
-      showNotification(`Можно добавить не больше ${MAX_ATTACHMENTS} вложений.`, 'error', 'Вложения');
+      showNotification(t('composer.attachmentLimitError', { count: MAX_ATTACHMENTS }), 'error', t('composer.attachmentLimitTitle'));
       event.target.value = '';
       return;
     }
 
     const acceptedFiles = files.slice(0, remainingSlots);
     if (acceptedFiles.length < files.length) {
-      showNotification(`Можно добавить не больше ${MAX_ATTACHMENTS} вложений.`, 'warning', 'Вложения');
+      showNotification(t('composer.attachmentLimitWarning', { count: MAX_ATTACHMENTS }), 'warning', t('composer.attachmentLimitTitle'));
     }
 
     setAttachments((current) => [
       ...current,
       ...acceptedFiles.map((file) => ({ name: file.name, path: window.telegram.getFilePath(file) })),
     ]);
+    if (attachments.length === 0) {
+      setMessage((current) => limitMessageText(current, getMessageMaxLength(true)));
+    }
     event.target.value = '';
   };
 
@@ -427,14 +438,6 @@ export function SchedulePage(props: SchedulePageProps) {
         {showTopbar && (
           <header className="topbar">
             <div className="topbar-identity">
-              <a
-                href="#/workspace"
-                className="settings-action"
-                aria-label="Studio"
-                title="Studio"
-              >
-                <span className="action-label">Studio</span>
-              </a>
               <div className="brand">AWAITMSG</div>
             </div>
 
@@ -446,24 +449,24 @@ export function SchedulePage(props: SchedulePageProps) {
                     setIsConfirmingLogout((current) => !current);
                   }}
                   disabled={authBusy}
-                  title="Log out"
-                  aria-label="Log out"
+                  title={t('auth.logout')}
+                  aria-label={t('auth.logout')}
                   aria-expanded={isConfirmingLogout}
                 >
-                  <span className="action-label">Log out</span>
+                  <span className="action-label">{t('auth.logout')}</span>
                 </button>
 
                 {isConfirmingLogout && (
-                  <div className="logout-confirmation" role="dialog" aria-label="Confirm log out">
-                    <strong className="logout-confirmation-title">Sign out?</strong>
-                    <div className="logout-choice-list" role="radiogroup" aria-label="Sign out preference">
+                  <div className="logout-confirmation" role="dialog" aria-label={t('auth.confirmLogout')}>
+                    <strong className="logout-confirmation-title">{t('auth.signOut')}</strong>
+                    <div className="logout-choice-list" role="radiogroup" aria-label={t('auth.signOutPreference')}>
                       <button
                         type="button"
                         className="logout-choice"
                         onClick={handleDisconnect}
                         disabled={authBusy}
                       >
-                        Remember me
+                        {t('auth.rememberMe')}
                       </button>
                       <button
                         type="button"
@@ -471,7 +474,7 @@ export function SchedulePage(props: SchedulePageProps) {
                         onClick={handleForgetAccount}
                         disabled={authBusy}
                       >
-                        Forget me
+                        {t('auth.forgetMe')}
                       </button>
                     </div>
                     <div className="logout-confirmation-actions">
@@ -483,7 +486,7 @@ export function SchedulePage(props: SchedulePageProps) {
                         }}
                         disabled={authBusy}
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
@@ -498,10 +501,10 @@ export function SchedulePage(props: SchedulePageProps) {
                   setIsConfirmingLogout(false);
                   onOpenSettings();
                 }}
-                title="Settings"
-                aria-label="Settings"
+                title={t('topbar.settings')}
+                aria-label={t('topbar.settings')}
               >
-                <span className="action-label">Settings</span>
+                <span className="action-label">{t('topbar.settings')}</span>
               </button>
             </div>
           </header>
@@ -511,37 +514,55 @@ export function SchedulePage(props: SchedulePageProps) {
           <div className="connection-stage" aria-hidden="true" />
         ) : !connected ? (
           <section className={`auth-panel ${showAuthForm ? 'is-auth-open' : ''}`}>
+            <div className="auth-language-switch" role="group" aria-label={t('language.title')}>
+              <button type="button" className={locale === 'en' ? 'is-selected' : ''} onClick={() => setLocale('en')} aria-pressed={locale === 'en'}>
+                EN
+              </button>
+              <span aria-hidden="true">|</span>
+              <button type="button" className={locale === 'ru' ? 'is-selected' : ''} onClick={() => setLocale('ru')} aria-pressed={locale === 'ru'}>
+                RU
+              </button>
+            </div>
             <span className="auth-version">Version 2.1.7</span>
             <div className="auth-intro">
-              <div className="auth-hero-copy" aria-label="AwaitMsg sign in intro">
-                <span className="auth-hero-line auth-hero-line-main">LET THE MSG</span>
-                <span className="auth-hero-line auth-hero-line-sub">WAIT.</span>
+              <div className="auth-hero-copy" aria-label={t('hero.signInIntro')}>
+                <span className="auth-hero-line auth-hero-line-main">
+                  {locale === 'ru' ? (
+                    <>
+                      <span>Сообщение</span>
+                      <span>подождёт.</span>
+                    </>
+                  ) : t('hero.sloganMain')}
+                </span>
+                {locale !== 'ru' && <span className="auth-hero-line auth-hero-line-sub">{t('hero.sloganSub')}</span>}
               </div>
 
-              <button
-                type="button"
-                className="auth-cta"
-                aria-label="Continue with Telegram"
-                onClick={() => {
-                  setShowAuthForm((current) => !current);
-                  setAuthStep('phone');
-                  setAuthError('');
-                }}
-              >
-                <span>CONTINUE</span>
-                <span className="auth-cta-arrow" aria-hidden="true">→</span>
-                <span>TELEGRAM</span>
-              </button>
+              {!signedOut && (
+                <button
+                  type="button"
+                  className="auth-cta"
+                  aria-label={t('auth.continueTelegram')}
+                  onClick={() => {
+                    setShowAuthForm((current) => !current);
+                    setAuthStep('phone');
+                    setAuthError('');
+                  }}
+                >
+                  <span>{t('auth.continue')}</span>
+                  <span className="auth-cta-arrow" aria-hidden="true">→</span>
+                  <span>{t('auth.telegram')}</span>
+                </button>
+              )}
 
               <div className={`auth-form ${showAuthForm ? 'is-visible' : ''}`}>
                 {authStep === 'phone' && (
                   <div className="field">
-                    <label>Phone</label>
+                    <label>{t('auth.phone')}</label>
                     <input
                       type="tel"
                       value={phoneNumber}
                       onChange={(event) => setPhoneNumber(event.target.value)}
-                      placeholder="1 555 000 0000"
+                      placeholder={t('auth.phonePlaceholder')}
                       autoComplete="tel"
                     />
                   </div>
@@ -549,12 +570,12 @@ export function SchedulePage(props: SchedulePageProps) {
 
                 {authStep !== 'phone' && (
                   <div className="field">
-                    <label>Login code</label>
+                    <label>{t('auth.loginCode')}</label>
                     <input
                       type="text"
                       value={phoneCode}
                       onChange={(event) => setPhoneCode(event.target.value)}
-                      placeholder="The code sent to your phone"
+                      placeholder={t('auth.loginCodePlaceholder')}
                       inputMode="numeric"
                       autoComplete="one-time-code"
                     />
@@ -563,12 +584,12 @@ export function SchedulePage(props: SchedulePageProps) {
 
                 {authStep === 'password' && (
                   <div className="field">
-                    <label>Two-step password</label>
+                    <label>{t('auth.twoFactorPassword')}</label>
                     <input
                       type="password"
                       value={twoFactorPassword}
                       onChange={(event) => setTwoFactorPassword(event.target.value)}
-                      placeholder="Your two-step password"
+                      placeholder={t('auth.twoFactorPasswordPlaceholder')}
                       autoComplete="current-password"
                     />
                   </div>
@@ -582,12 +603,12 @@ export function SchedulePage(props: SchedulePageProps) {
                   disabled={authBusy || (authStep === 'phone' ? !phoneNumber.trim() : !phoneCode.trim())}
                 >
                   {authBusy
-                    ? 'Connecting…'
+                    ? t('auth.connecting')
                     : authStep === 'phone'
-                      ? 'Sign in'
+                      ? t('auth.signIn')
                       : authStep === 'password'
-                        ? 'Verify and connect'
-                        : 'Verify code'}
+                        ? t('auth.verifyConnect')
+                        : t('auth.verifyCode')}
                 </button>
 
                 {authStep !== 'phone' && (
@@ -601,15 +622,15 @@ export function SchedulePage(props: SchedulePageProps) {
                     }}
                     disabled={authBusy}
                   >
-                    Start over with another phone
+                    {t('auth.startOver')}
                   </button>
                 )}
               </div>
             </div>
             {signedOut && (
-              <aside className="returning-user-panel" aria-label="Returning user">
+              <aside className="returning-user-panel" aria-label={t('auth.returningUser')}>
                 <div className="returning-user-copy">
-                  <span className="returning-user-greeting">WELCOME BACK,</span>
+                  <span className="returning-user-greeting">{t('auth.welcomeBack')}</span>
                   <button
                     type="button"
                     className="returning-user-name"
@@ -620,7 +641,7 @@ export function SchedulePage(props: SchedulePageProps) {
                   </button>
                   <div className="returning-user-actions">
                     <button type="button" onClick={handleForgetAccount} disabled={authBusy}>
-                      Not you?
+                      {t('auth.notYou')}
                     </button>
                   </div>
                 </div>
@@ -631,14 +652,14 @@ export function SchedulePage(props: SchedulePageProps) {
           <>
             <section
               className={`hero ${assistantIntent ? 'has-assistant-confirmation' : ''}`}
-              aria-label="AwaitMsg assistant"
+              aria-label={t('hero.assistant')}
             >
-              <div className="hero-slogan">LET IT WAIT.</div>
+              {locale !== 'ru' && <div className="hero-slogan">{t('hero.sloganSub')}</div>}
               <div className="assistant-visual-slot">
                 {geminiSettings.enabled ? (
                   <>
                     <div className="assistant-mark" aria-hidden="true">✦</div>
-                    <div className="assistant-label">AI ASSISTANT</div>
+                    <div className="assistant-label">{t('hero.assistant')}</div>
 
                     <form
                       className={`assistant-form ${isThinking ? 'is-thinking' : ''} ${
@@ -656,19 +677,19 @@ export function SchedulePage(props: SchedulePageProps) {
                           }
                         }}
                         placeholder={assistantExamples[assistantExampleIndex]}
-                        aria-label="Ask AwaitMsg Assistant"
-                        title="Describe the task — AI will help you write the message and schedule it."
+                        aria-label={t('assistant.askLabel')}
+                        title={t('assistant.askTitle')}
                         rows={2}
                         lang="ru"
                         spellCheck
                       />
-                      <button type="submit" aria-label="Send to AI Assistant" title="Send request to AI Assistant" disabled={isThinking || !assistantPrompt.trim()}>
+                      <button type="submit" aria-label={t('assistant.sendLabel')} title={t('assistant.sendTitle')} disabled={isThinking || !assistantPrompt.trim()}>
                         →
                       </button>
                     </form>
 
                     {isThinking && (
-                      <div className="assistant-thinking-dots" aria-label="Assistant is thinking">
+                      <div className="assistant-thinking-dots" aria-label={t('assistant.thinking')}>
                         <span />
                         <span />
                         <span />
@@ -698,7 +719,7 @@ export function SchedulePage(props: SchedulePageProps) {
                               setAssistantResponse('');
                             }}
                           >
-                            Edit
+                            {t('assistant.edit')}
                           </button>
                           <button
                             type="button"
@@ -706,7 +727,7 @@ export function SchedulePage(props: SchedulePageProps) {
                               const chat = chats.find((item) => item.name === assistantIntent.chat);
 
                               if (!chat) {
-                                showNotification('Chat is no longer available.', 'error', 'Cannot schedule');
+                                showNotification(t('assistant.chatUnavailable'), 'error', t('assistant.cannotSchedule'));
                                 return;
                               }
 
@@ -718,7 +739,7 @@ export function SchedulePage(props: SchedulePageProps) {
                               });
                             }}
                           >
-                            Send →
+                            {t('assistant.send')}
                           </button>
                         </div>
                       </div>
@@ -730,7 +751,7 @@ export function SchedulePage(props: SchedulePageProps) {
 
             <section className="composer">
               <div className="field chat-field">
-                <label className="composer-field-label">Chat</label>
+                <label className="composer-field-label">{t('chat.label')}</label>
 
                 <ChatPicker
                   chats={chats}
@@ -743,15 +764,26 @@ export function SchedulePage(props: SchedulePageProps) {
               </div>
 
               <div className="field message-field">
-                <label className="composer-field-label">Your message</label>
+                <label className="composer-field-label">{t('composer.messageLabel')}</label>
 
                 <div className="message-input-wrap">
-                  {!message && <span className="message-placeholder" aria-hidden="true">Leave something for later...</span>}
+                  {!message && <span className="message-placeholder" aria-hidden="true">{t('composer.messagePlaceholder')}</span>}
                   <textarea
                     value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    aria-label="Your message"
-                    maxLength={4096}
+                    onChange={(event) => setMessage(limitMessageText(event.target.value, messageMaxLength))}
+                    onPaste={(event) => {
+                      event.preventDefault();
+                      const textarea = event.currentTarget;
+                      setMessage((current) => insertMessageText(
+                        current,
+                        event.clipboardData.getData('text'),
+                        textarea.selectionStart,
+                        textarea.selectionEnd,
+                        messageMaxLength,
+                      ));
+                    }}
+                    aria-label={t('composer.messageLabel')}
+                    maxLength={messageMaxLength}
                     lang="ru"
                     spellCheck={false}
                   />
@@ -761,8 +793,8 @@ export function SchedulePage(props: SchedulePageProps) {
                     <button
                       type="button"
                       className="message-attachment-button"
-                      aria-label="Add attachment"
-                      title="Add attachment"
+                      aria-label={t('composer.addAttachment')}
+                      title={t('composer.addAttachment')}
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <Paperclip size={17} strokeWidth={1.8} aria-hidden="true" />
@@ -855,13 +887,13 @@ export function SchedulePage(props: SchedulePageProps) {
                     ) : null}
                   </div>
 
-                  <span className="message-counter">{message.length} / 4096</span>
+                  <span className="message-counter">{message.length} / {messageMaxLength}</span>
                   <div className="message-send-control">
                     <span
                       className={`message-selected-option-icon ${selectedMessageOption ? '' : 'is-empty'}`}
                       aria-hidden={!selectedMessageOption}
-                        aria-label={selectedMessageOption === 'silent' ? 'Silent send selected' : selectedMessageOption === 'effect' ? 'Effect selected' : undefined}
-                        title={selectedMessageOption === 'silent' ? 'Silent send' : selectedMessageOption === 'effect' ? 'Effect' : undefined}
+                        aria-label={selectedMessageOption === 'silent' ? t('composer.silentSelected') : selectedMessageOption === 'effect' ? t('composer.effectSelected') : undefined}
+                        title={selectedMessageOption === 'silent' ? t('composer.silent') : selectedMessageOption === 'effect' ? t('composer.effect') : undefined}
                     >
                         {selectedMessageOption === 'silent'
                           ? '🔕'
@@ -871,17 +903,17 @@ export function SchedulePage(props: SchedulePageProps) {
                       type="button"
                       className="message-send-button"
                       ref={messageOptionsButtonRef}
-                      aria-label="Send now"
+                      aria-label={t('composer.sendNow')}
                       aria-expanded={messageOptionsOpen}
                       aria-haspopup="menu"
-                      title="Message options"
+                      title={t('composer.messageOptions')}
                       onClick={() => setMessageOptionsOpen((current) => !current)}
                     >
                       <Menu size={17} strokeWidth={1.8} aria-hidden="true" />
                     </button>
 
                     {messageOptionsOpen && (
-                      <div className="message-options-menu" ref={messageOptionsRef} role="menu" aria-label="Message options">
+                      <div className="message-options-menu" ref={messageOptionsRef} role="menu" aria-label={t('composer.messageOptions')}>
                         <button
                           type="button"
                           className={selectedMessageOption === 'silent' ? 'is-selected' : ''}
@@ -893,7 +925,7 @@ export function SchedulePage(props: SchedulePageProps) {
                           }}
                         >
                           <span className="message-option-icon" aria-hidden="true">🔕</span>
-                          <span className="message-option-label">Silent sending</span>
+                          <span className="message-option-label">{t('composer.silent')}</span>
                         </button>
                         <button
                           type="button"
@@ -912,14 +944,14 @@ export function SchedulePage(props: SchedulePageProps) {
                           }}
                         >
                           <span className="message-option-icon" aria-hidden="true">✨</span>
-                          <span className="message-option-label">Effect</span>
+                          <span className="message-option-label">{t('composer.effect')}</span>
                         </button>
                       </div>
                     )}
                     {messageOptionsOpen && selectedMessageOption === 'effect' && effectMenuOpen && (
-                      <div ref={effectMenuRef} className="message-effect-menu" role="menu" aria-label="Available Telegram effects">
+                      <div ref={effectMenuRef} className="message-effect-menu" role="menu" aria-label={t('composer.effects')}>
                         <div className="message-effect-menu-header">
-                          <span>Effect</span>
+                          <span>{t('composer.effect')}</span>
                           <span>{availableEffects.length}</span>
                         </div>
                         <button
@@ -936,15 +968,15 @@ export function SchedulePage(props: SchedulePageProps) {
                           }}
                         >
                           <span className="message-option-icon" aria-hidden="true">✦</span>
-                          <span className="message-option-label">Without effect</span>
+                          <span className="message-option-label">{t('composer.withoutEffect')}</span>
                         </button>
 
                         {effectsLoading ? (
-                          <div className="message-effect-status" role="status">Loading effects…</div>
+                          <div className="message-effect-status" role="status">{t('composer.effectsLoading')}</div>
                         ) : (
                           <>
                             {freeEffects.length > 0 && (
-                              <div className="message-effect-section-label">Free</div>
+                              <div className="message-effect-section-label">{t('composer.free')}</div>
                             )}
                             {freeEffects.slice(0, 6).map((effect) => (
                               <button
@@ -962,7 +994,7 @@ export function SchedulePage(props: SchedulePageProps) {
                                 }}
                               >
                                 <span className="message-option-icon" aria-hidden="true">{effect.emoticon}</span>
-                                <span className="message-option-label">Effect</span>
+                                <span className="message-option-label">{t('composer.effect')}</span>
                               </button>
                             ))}
                             {premiumEffects.length > 0 && (
@@ -973,7 +1005,7 @@ export function SchedulePage(props: SchedulePageProps) {
                                   aria-expanded={premiumEffectsOpen}
                                   onClick={() => setPremiumEffectsOpen((current) => !current)}
                                 >
-                                  <span className="message-effect-section-label">Premium</span>
+                                  <span className="message-effect-section-label">{t('composer.premium')}</span>
                                   <span aria-hidden="true">{premiumEffectsOpen ? '⌃' : '⌄'}</span>
                                 </button>
                                 {premiumEffectsOpen && premiumEffects.map((effect) => (
@@ -992,7 +1024,7 @@ export function SchedulePage(props: SchedulePageProps) {
                                     }}
                                   >
                                     <span className="message-option-icon" aria-hidden="true">{effect.emoticon}</span>
-                                    <span className="message-option-label">Premium</span>
+                                    <span className="message-option-label">{t('composer.premium')}</span>
                                   </button>
                                 ))}
                               </>
@@ -1018,18 +1050,18 @@ export function SchedulePage(props: SchedulePageProps) {
                   <div className="moment-controls">
                     <div className="moment-date-display">
                       <CalendarDays className="moment-date-icon" aria-hidden="true" size={18} strokeWidth={1.8} onClick={() => togglePicker('date', datePickerRef)} />
-                      <input className="moment-segment moment-day" value={dateDay} inputMode="numeric" maxLength={2} aria-label="Day" onChange={(event) => updateDatePart('day', event.target.value)} />
+                      <input className="moment-segment moment-day" value={dateDay} inputMode="numeric" maxLength={2} aria-label={t('composer.day')} onChange={(event) => updateDatePart('day', event.target.value)} />
                       <span className="moment-date-separator">/</span>
-                      <input className="moment-segment moment-month" value={dateMonth} inputMode="numeric" maxLength={2} aria-label="Month" onChange={(event) => updateDatePart('month', event.target.value)} />
+                      <input className="moment-segment moment-month" value={dateMonth} inputMode="numeric" maxLength={2} aria-label={t('composer.month')} onChange={(event) => updateDatePart('month', event.target.value)} />
                       <span className="moment-date-separator">/</span>
-                      <input className="moment-segment moment-year" value={dateYear} inputMode="numeric" maxLength={4} aria-label="Year" onChange={(event) => updateDatePart('year', event.target.value)} />
+                      <input className="moment-segment moment-year" value={dateYear} inputMode="numeric" maxLength={4} aria-label={t('composer.year')} onChange={(event) => updateDatePart('year', event.target.value)} />
                     </div>
 
                     <div ref={timeDisplayRef} className="moment-time-display">
                       <Clock ref={timePickerRef} className="moment-time-icon" aria-hidden="true" size={18} strokeWidth={1.8} onClick={openTimePicker} />
-                      <input className="moment-segment moment-time-hours" value={timeHours} inputMode="numeric" maxLength={2} aria-label="Hours" onChange={(event) => updateTimePart('hours', event.target.value)} />
+                      <input className="moment-segment moment-time-hours" value={timeHours} inputMode="numeric" maxLength={2} aria-label={t('composer.hours')} onChange={(event) => updateTimePart('hours', event.target.value)} />
                       <span className="moment-time-separator" aria-hidden="true">:</span>
-                      <input className="moment-segment moment-time-minutes" value={timeMinutes} inputMode="numeric" maxLength={2} aria-label="Minutes" onChange={(event) => updateTimePart('minutes', event.target.value)} />
+                      <input className="moment-segment moment-time-minutes" value={timeMinutes} inputMode="numeric" maxLength={2} aria-label={t('composer.minutes')} onChange={(event) => updateTimePart('minutes', event.target.value)} />
                     </div>
 
                     {timePickerOpen && createPortal(
@@ -1038,17 +1070,17 @@ export function SchedulePage(props: SchedulePageProps) {
                         className="start-screen-time-menu"
                         style={timeMenuPosition}
                         role="listbox"
-                        aria-label="Choose time"
+                        aria-label={t('composer.chooseTime')}
                       >
                         <label className="start-screen-time-manual">
-                          <span>Manual time</span>
+                          <span>{t('composer.manualTime')}</span>
                           <span className="start-screen-time-manual-fields">
                             <input
                               type="text"
                               value={manualTime.split(':')[0]}
                               inputMode="numeric"
                               maxLength={2}
-                              aria-label="Hours"
+                              aria-label={t('composer.hours')}
                               onChange={(event) => updateManualTimePart('hours', event.target.value)}
                             />
                             <b aria-hidden="true">:</b>
@@ -1057,14 +1089,14 @@ export function SchedulePage(props: SchedulePageProps) {
                               value={manualTime.split(':')[1]}
                               inputMode="numeric"
                               maxLength={2}
-                              aria-label="Minutes"
+                              aria-label={t('composer.minutes')}
                               onChange={(event) => updateManualTimePart('minutes', event.target.value)}
                             />
                           </span>
                         </label>
                         <select
                           className="start-screen-time-list"
-                          aria-label="Choose time"
+                          aria-label={t('composer.chooseTime')}
                           size={6}
                           value={`${time.slice(0, 2)}:00`}
                           onChange={(event) => {
@@ -1089,7 +1121,7 @@ export function SchedulePage(props: SchedulePageProps) {
                       className="moment-native-picker moment-native-date-picker"
                       type="date"
                       value={date}
-                      aria-label="Choose date"
+                      aria-label={t('composer.chooseDate')}
                       onChange={(event) => {
                         dateEditedRef.current = true;
                         openPickerRef.current = null;
@@ -1100,7 +1132,7 @@ export function SchedulePage(props: SchedulePageProps) {
                       className="moment-native-picker moment-native-time-picker"
                       type="time"
                       value={time}
-                      aria-label="Choose time"
+                      aria-label={t('composer.chooseTime')}
                       onChange={(event) => {
                         timeEditedRef.current = true;
                         openPickerRef.current = null;
@@ -1130,7 +1162,7 @@ export function SchedulePage(props: SchedulePageProps) {
                 }}
                 disabled={scheduling}
               >
-                {scheduling ? 'Scheduling…' : successPulse ? 'SEALED' : 'Seal it'}
+                {scheduling ? t('composer.scheduling') : successPulse ? t('composer.sealed') : t('composer.seal')}
               </button>
             </section>
 
@@ -1153,9 +1185,13 @@ export function SchedulePage(props: SchedulePageProps) {
               />
             </section>
 
-            <footer>
-              <span>{getTimezoneLabel()}</span>
-            </footer>
+            {createPortal(
+              <footer className={`timezone-footer ${((activeTab === 'upcoming' && upcoming.length > 0) || (activeTab === 'sent' && sent.length > 0)) ? 'is-list-context' : ''}`}>
+                <span>{getTimezoneLabel()}</span>
+              </footer>,
+              document.body,
+            )}
+
           </>
         )}
       </div>

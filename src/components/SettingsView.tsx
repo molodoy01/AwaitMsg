@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocale } from '@/lib/i18n';
 
 type GeminiSettings = {
   hasKey: boolean;
@@ -30,6 +31,7 @@ export function SettingsView({
   onRemoveGeminiKey,
   onToggleAssistant,
 }: SettingsViewProps) {
+  const { locale, setLocale, t } = useLocale();
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [isConfirmingRemoval, setIsConfirmingRemoval] = useState(false);
 
@@ -58,18 +60,30 @@ export function SettingsView({
           className="settings-view-done"
           onClick={onClose}
         >
-          Done
+          {t('settings.done')}
         </button>
       </header>
 
       <main className="settings-view-content">
-        <h1>Settings</h1>
+        <h1>{t('settings.title')}</h1>
 
         <div className="settings-sections">
+          <section className="settings-view-section">
+            <h2>{t('settings.language')}</h2>
+            <div className="settings-language-switch" role="group" aria-label={t('settings.language')}>
+              <button type="button" className={locale === 'en' ? 'is-selected' : ''} onClick={() => setLocale('en')} aria-pressed={locale === 'en'}>
+                EN
+              </button>
+              <span aria-hidden="true">|</span>
+              <button type="button" className={locale === 'ru' ? 'is-selected' : ''} onClick={() => setLocale('ru')} aria-pressed={locale === 'ru'}>
+                RU
+              </button>
+            </div>
+          </section>
           <section className="settings-view-section" style={{ display: 'none' }}>
-            <h2>AI Assistant</h2>
+            <h2>{t('settings.aiAssistant')}</h2>
             <p className="settings-view-description">
-              Create scheduled messages in your own words.
+              {t('settings.aiDescription')}
             </p>
             <button
               type="button"
@@ -78,21 +92,21 @@ export function SettingsView({
               disabled={settingsBusy}
               aria-pressed={geminiSettings.enabled}
             >
-              <span>AI Assistant</span>
+              <span>{t('settings.aiAssistant')}</span>
               <span className={`settings-toggle-state ${geminiSettings.enabled ? 'is-on' : 'is-off'}`}>
-                {geminiSettings.enabled ? 'ON' : 'OFF'}
+                {geminiSettings.enabled ? t('settings.on') : t('settings.off')}
               </span>
             </button>
           </section>
 
           <section className="settings-view-section" style={{ display: 'none' }}>
             <div className="settings-section-heading-row">
-              <h2>Gemini API Key</h2>
+              <h2>{t('settings.geminiKey')}</h2>
               <span className={`settings-status ${geminiSettings.hasKey ? 'is-ready' : 'is-missing'}`}>
-                {geminiSettings.hasKey ? 'KEY READY' : 'NO KEY'}
+                {geminiSettings.hasKey ? t('settings.keyReady') : t('settings.noKey')}
               </span>
             </div>
-            <p className="settings-view-description">Your key, your quota.</p>
+            <p className="settings-view-description">{t('settings.keyDescription')}</p>
 
             {isEditingKey ? (
               <form
@@ -107,22 +121,22 @@ export function SettingsView({
                   type="password"
                   value={settingsKey}
                   onChange={(event) => onSettingsKeyChange(event.target.value)}
-                  placeholder="Paste your Gemini API key"
+                  placeholder={t('settings.keyPlaceholder')}
                   autoFocus
                   disabled={settingsBusy}
                 />
                 <button type="submit" disabled={settingsBusy || !settingsKey.trim()}>
-                  Save
+                  {t('common.save')}
                 </button>
               </form>
             ) : (
               <div className="settings-key-row">
                 <span className="settings-key-value">
-                  {geminiSettings.hasKey ? geminiSettings.maskedKey : 'No key yet'}
+                  {geminiSettings.hasKey ? geminiSettings.maskedKey : t('settings.noKeyYet')}
                 </span>
                 <span className="settings-key-actions">
                   <button type="button" onClick={() => setIsEditingKey(true)} disabled={settingsBusy}>
-                    Change key
+                    {t('settings.changeKey')}
                   </button>
                   {geminiSettings.hasKey && (
                     <button
@@ -130,7 +144,7 @@ export function SettingsView({
                       onClick={() => setIsConfirmingRemoval(true)}
                       disabled={settingsBusy}
                     >
-                      Remove
+                      {t('common.remove')}
                     </button>
                   )}
                 </span>
@@ -139,14 +153,14 @@ export function SettingsView({
 
             {isConfirmingRemoval && geminiSettings.hasKey && (
               <div className="settings-remove-confirmation">
-                <span>Remove this key?</span>
+                <span>{t('settings.removeThisKey')}</span>
                 <span className="settings-key-actions">
                   <button
                     type="button"
                     onClick={() => setIsConfirmingRemoval(false)}
                     disabled={settingsBusy}
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="button"
@@ -156,7 +170,7 @@ export function SettingsView({
                     }}
                     disabled={settingsBusy}
                   >
-                    Remove key
+                      {t('settings.removeKey')}
                   </button>
                 </span>
               </div>
@@ -168,17 +182,15 @@ export function SettingsView({
               target="_blank"
               rel="noreferrer"
             >
-              Get API key <span aria-hidden="true">→</span>
+              {t('settings.getKey')} <span aria-hidden="true">→</span>
             </a>
             {settingsError && <p className="settings-view-error">{settingsError}</p>}
           </section>
 
           <section className="settings-view-section settings-about-section">
-            <h2>About</h2>
+            <h2>{t('settings.about')}</h2>
             <p className="settings-view-description">
-              AwaitMsg keeps your Telegram messages ready
-              <br />
-              for the right moment.
+              {t('settings.aboutDescription')}
             </p>
             <p className="settings-version">Version 2.1.7</p>
           </section>
