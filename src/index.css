@@ -4318,7 +4318,9 @@ textarea:focus-visible {
 }
 
 .tab-content .empty-state {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 180px;
@@ -4331,6 +4333,20 @@ textarea:focus-visible {
   line-height: 1.2;
   text-align: center;
   white-space: nowrap;
+}
+
+.empty-state-message {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-state-timezone {
+  position: absolute;
+  right: 12px;
+  bottom: 0;
 }
 
 .empty-state.hidden { display: none; }
@@ -4754,17 +4770,8 @@ textarea:focus-visible {
 
 /* ── TIMEZONE ── */
 
-.timezone-footer {
-  position: fixed !important;
-  left: 50%;
-  bottom: 24px;
-  z-index: 4;
-  width: min(640px, calc(100vw - 48px));
-  margin: 0;
-  padding: 0 24px;
-  display: flex;
-  justify-content: flex-end;
-  transform: translateX(-50%);
+.messages-timezone,
+.empty-state-timezone {
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 500;
@@ -4772,8 +4779,10 @@ textarea:focus-visible {
   color: var(--dim);
 }
 
-.timezone-footer.is-list-context {
-  bottom: 70px;
+.messages-timezone {
+  position: absolute;
+  top: -26px;
+  right: 0;
 }
 
 /* ── TIMEZONE BADGE ── */

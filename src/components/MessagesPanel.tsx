@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MessageOption, ScheduledMessage } from '@/types';
 import { MessageCard } from './MessageCard';
 import { useLocale } from '@/lib/i18n';
+import { getTimezoneLabel } from '@/lib/utils';
 
 interface Props {
   upcoming: ScheduledMessage[];
@@ -331,7 +332,8 @@ export function MessagesPanel({
       >
         {upcomingSorted.length === 0 ? (
           <div className="empty-state">
-            {t('schedule.emptyUpcoming')}
+            <span className="empty-state-message">{t('schedule.emptyUpcoming')}</span>
+            <span className="empty-state-timezone">{getTimezoneLabel()}</span>
           </div>
         ) : (
           <div className="message-list">
@@ -358,6 +360,7 @@ export function MessagesPanel({
 
             {!showAllMessages && olderUpcoming.length > 0 && (
               <div className="upcoming-older-toggle-wrap">
+                <div className="messages-timezone">{getTimezoneLabel()}</div>
                 <button
                   type="button"
                   className="upcoming-older-toggle"
@@ -402,7 +405,8 @@ export function MessagesPanel({
       >
         {sentSorted.length === 0 ? (
           <div className="empty-state">
-            {t('schedule.emptySent')}
+            <span className="empty-state-message">{t('schedule.emptySent')}</span>
+            <span className="empty-state-timezone">{getTimezoneLabel()}</span>
           </div>
         ) : (
           <div className="message-list">
@@ -427,6 +431,7 @@ export function MessagesPanel({
 
             {!showAllMessages && olderSent.length > 0 && (
               <div className="upcoming-older-toggle-wrap">
+                <div className="messages-timezone">{getTimezoneLabel()}</div>
                 <button
                   type="button"
                   className="upcoming-older-toggle"

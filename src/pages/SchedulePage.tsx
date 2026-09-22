@@ -7,7 +7,6 @@ import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
 import { getMessageMaxLength, insertMessageText, limitMessageText } from '@/lib/messageLimits';
-import { getTimezoneLabel } from '@/lib/utils';
 import type { AssistantIntent } from '@/hooks/useAssistant';
 import type { Chat, NotificationState, ScheduledMessage } from '@/types';
 import { shouldShowTopbar } from '@/lib/authLayout';
@@ -1184,13 +1183,6 @@ export function SchedulePage(props: SchedulePageProps) {
                 selectedMessageOption={selectedMessageOption}
               />
             </section>
-
-            {createPortal(
-              <footer className={`timezone-footer ${((activeTab === 'upcoming' && upcoming.length > 0) || (activeTab === 'sent' && sent.length > 0)) ? 'is-list-context' : ''}`}>
-                <span>{getTimezoneLabel()}</span>
-              </footer>,
-              document.body,
-            )}
 
           </>
         )}
