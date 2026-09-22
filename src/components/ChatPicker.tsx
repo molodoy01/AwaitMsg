@@ -11,6 +11,29 @@ interface Props {
 }
 import { useLocale } from '@/lib/i18n';
 
+function ChatAvatar({
+  name,
+  src,
+  className,
+}: {
+  name: string;
+  src?: string;
+  className: string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const initial = name.trim().slice(0, 1).toUpperCase() || 'C';
+
+  return (
+    <span className={className}>
+      {src && !imageFailed ? (
+        <img src={src} alt="" onError={() => setImageFailed(true)} />
+      ) : (
+        <span aria-hidden="true">{initial}</span>
+      )}
+    </span>
+  );
+}
+
 export function ChatPicker({
   chats,
   selectedChat,
@@ -78,13 +101,11 @@ export function ChatPicker({
         tabIndex={0}
         role="button"
       >
-        <span className="chat-picker-current-avatar" aria-hidden="true">
-          {selectedChat?.avatarDataUrl ? (
-            <img src={selectedChat.avatarDataUrl} alt="" />
-          ) : (
-            <span>{selectedChat ? selectedChat.name.slice(0, 1).toUpperCase() : 'C'}</span>
-          )}
-        </span>
+        <ChatAvatar
+          name={selectedChat?.name || ''}
+          src={selectedChat?.avatarDataUrl}
+          className="chat-picker-current-avatar"
+        />
         <span className="chat-picker-current-copy">
           <span className="chat-picker-current-name">
             {selectedChat
@@ -125,9 +146,11 @@ export function ChatPicker({
               setOpen(false);
             }}
           >
-            <span className="chat-option-avatar" aria-hidden="true">
-              {chat.avatarDataUrl ? <img src={chat.avatarDataUrl} alt="" /> : chat.name.slice(0, 1).toUpperCase()}
-            </span>
+            <ChatAvatar
+              name={chat.name}
+              src={chat.avatarDataUrl}
+              className="chat-option-avatar"
+            />
             <span className="chat-option-copy">
               <strong className="chat-option-name">
                 {chat.name === 'Saved Messages' ? t('chat.savedMessages') : chat.name}

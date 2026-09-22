@@ -440,7 +440,6 @@ export function SchedulePage(props: SchedulePageProps) {
         {showTopbar && (
           <header className="topbar">
             <div className="topbar-identity">
-              <div className="brand">XMSGi</div>
             </div>
 
             <div className="topbar-actions">

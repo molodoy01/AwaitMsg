@@ -45,7 +45,8 @@
   "main": "main.cjs",
   "build": {
     "appId": "com.awaitmsg.app",
-    "productName": "AwaitMsg",
+    "productName": "XMSGi",
+    "icon": "build/icon.ico",
     "directories": {
       "output": "release"
     },
@@ -53,11 +54,17 @@
       "dist/**/*",
       "main.cjs",
       "preload.cjs",
+      "chat-storage.cjs",
       "gemini.cjs",
       "telegram.cjs",
-      "ipc-security.cjs",
+      "telegram-inline-keyboard.cjs",
+      "telegram-errors.cjs",
       "telegram-account-storage.cjs",
       "telegram-lifecycle.cjs",
+      "telegram-search.cjs",
+      "telegram-dialog-search.cjs",
+      "telegram-permissions.cjs",
+      "ipc-security.cjs",
       "package.json",
       "node_modules/**/*"
     ],

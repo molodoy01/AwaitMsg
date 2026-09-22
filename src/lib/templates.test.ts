@@ -33,7 +33,7 @@ function makeTemplate(id = 'template-1'): Template {
   return {
     id,
     name: 'Announcement',
-    body: 'Hello from AwaitMsg',
+    body: 'Hello from XMSGi',
     createdAt: '2030-01-01T10:00:00.000Z',
     updatedAt: '2030-01-01T10:00:00.000Z',
   };

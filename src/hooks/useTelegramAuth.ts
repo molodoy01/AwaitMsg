@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Chat, NotificationType } from '@/types';
-import { saveChats } from '@/lib/storage';
+import { savePersistentChats } from '@/lib/storage';
 import { useLocale } from '@/lib/i18n';
 
 export type TelegramAuthOptions = {
@@ -105,7 +105,7 @@ export function useTelegramAuth({
       setIsConfirmingLogout(false);
       setIsSettingsOpen(false);
       setChats([]);
-      saveChats([]);
+      void savePersistentChats([]);
       setSelectedChat(null);
       setAuthStep('phone');
       setPhoneCode('');
@@ -172,7 +172,7 @@ export function useTelegramAuth({
       setReturningUserName('');
       setIsConfirmingLogout(false);
       setChats([]);
-      saveChats([]);
+      void savePersistentChats([]);
       setSelectedChat(null);
       setShowAuthForm(false);
       setAuthStep('phone');

@@ -1,4 +1,4 @@
-name: Deploy AwaitMsg Website
+name: Deploy XMSGi Website
 
 on:
   push:

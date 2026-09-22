@@ -239,6 +239,7 @@ function getGeminiErrorCode(error) {
 function createWindow() {
    mainWindow = new BrowserWindow({
     title: 'XMSGi',
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     width: 1200,
     height: 800,
     minWidth: 900,

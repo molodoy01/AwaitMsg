@@ -14,11 +14,17 @@ describe('production packaging', () => {
     const requiredRuntimeFiles = [
       'main.cjs',
       'preload.cjs',
+      'chat-storage.cjs',
       'gemini.cjs',
       'telegram.cjs',
-      'ipc-security.cjs',
+      'telegram-inline-keyboard.cjs',
+      'telegram-errors.cjs',
       'telegram-account-storage.cjs',
       'telegram-lifecycle.cjs',
+      'telegram-search.cjs',
+      'telegram-dialog-search.cjs',
+      'telegram-permissions.cjs',
+      'ipc-security.cjs',
       'package.json'
     ];
 

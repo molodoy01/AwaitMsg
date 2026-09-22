@@ -1996,7 +1996,30 @@ async function sendMessageInternal(
           silent: sendOptions.silent === true,
           ...(sendOptions.effect !== undefined ? { effect: sendOptions.effect } : {}),
         });
-        return clientAtStart.invoke(request);
+        const response = await clientAtStart.invoke(request);
+
+        if (request.effect !== undefined) {
+          const updates = Array.isArray(response?.updates) ? response.updates : [];
+          const newMessageUpdate = updates.find((update) => update?.className === 'UpdateNewMessage');
+          const messageEffect = newMessageUpdate?.message?.effect;
+
+          if (newMessageUpdate) {
+            console.error('[MESSAGE-EFFECT-RESPONSE-DEBUG]', {
+              messageClassName: newMessageUpdate.message?.className,
+              messageId: newMessageUpdate.message?.id,
+              peerIdClassName: newMessageUpdate.message?.peerId?.className,
+              effect: messageEffect === undefined
+                ? undefined
+                : typeof messageEffect === 'bigint'
+                  ? `${messageEffect}n`
+                  : String(messageEffect),
+              effectClassName: messageEffect?.className,
+              effectId: messageEffect?.effectId?.toString?.() ?? messageEffect?.effectId,
+            });
+          }
+        }
+
+        return response;
       };
 
     logTelegramMarkupDiagnostics('send', { ...sendOptions, buttons: preparedMarkup }, clientAtStart);

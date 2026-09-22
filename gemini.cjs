@@ -55,7 +55,7 @@ async function generateGeminiContent(prompt, options = {}) {
   const context = options.context || {};
   const chatList = Array.isArray(context.chats) ? context.chats : [];
   const parserPrompt = [
-    'Parse the user request into an AwaitMsg scheduling intent.',
+    'Parse the user request into an XMSGi scheduling intent.',
     'Return only JSON matching the provided schema.',
     'Use action "schedule" only when chat, message, date, and time are all clear.',
     'Use action "clarify" when any required detail is missing or ambiguous.',

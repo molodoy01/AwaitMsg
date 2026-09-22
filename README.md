@@ -1,16 +1,16 @@
-# AwaitMsg
+# XMSGi
 
-**Let it wait.**
+**Let the msg wait.**
 
-[![AwaitMsg 01](screenshots/01.png)](screenshots/01.png)
+[![XMSGi 01](screenshots/01.png)](screenshots/01.png)
 
-[![AwaitMsg 02](screenshots/02.png)](screenshots/02.png)
+[![XMSGi 02](screenshots/02.png)](screenshots/02.png)
 
-[![AwaitMsg 03](screenshots/03.png)](screenshots/03.png)
+[![XMSGi 03](screenshots/03.png)](screenshots/03.png)
 
 Sometimes you know exactly what you want to say — just not when you want to send it.
 
-AwaitMsg lets you write a message, choose a moment, and leave it there until the right time.
+XMSGi lets you write a message, choose a moment, and leave it there until the right time.
 
 No complicated setup. No extra bots. Just your Telegram account and a message waiting for its moment.
 
@@ -25,9 +25,9 @@ No complicated setup. No extra bots. Just your Telegram account and a message wa
 * Forget an account to remove its saved data from the device
 * Manage everything from one quiet, simple interface
 
-AwaitMsg is made for those small messages that are better sent later.
+XMSGi is made for those small messages that are better sent later.
 
-**Windows · v2.1.7**
+**Windows**
 
-[Download AwaitMsg 2.1.7](../../releases/tag/v2.1.7)
+[Download XMSGi 2.1.7](../../releases/tag/v2.1.7)
 

@@ -80,6 +80,8 @@ function App() {
     setChats,
     selectedChat,
     setSelectedChat,
+    selectedChatPermissions,
+    refreshChatPermissions,
     removeModal,
     setRemoveModal,
     handleAddChat,
@@ -141,6 +143,7 @@ function App() {
     historyScope: 'personal',
     connected,
     selectedChat,
+    refreshChatPermissions,
     chats,
     message,
     showNotification,
@@ -241,6 +244,7 @@ function App() {
           handleForgetAccount={handleForgetAccount}
           chats={chats}
           selectedChat={selectedChat}
+          selectedChatPermissions={selectedChatPermissions}
           setSelectedChat={setSelectedChat}
           removeModal={removeModal}
           setRemoveModal={setRemoveModal}
