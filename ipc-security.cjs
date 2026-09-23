@@ -254,6 +254,24 @@ function validateLoginPayload(value) {
   return result;
 }
 
+function validateTelegramCredentialsPayload(value) {
+  if (!isPlainObject(value)) {
+    invalidInput('Telegram credentials payload must be an object');
+  }
+
+  const apiId = value.API_ID ?? value.apiId;
+  if (!/^[1-9]\d{0,9}$/.test(String(apiId ?? ''))) {
+    invalidInput('API_ID has an invalid format');
+  }
+
+  return {
+    API_ID: String(apiId),
+    API_HASH: validateString(value.API_HASH ?? value.apiHash, 'API_HASH', {
+      max: MAX_API_HASH_LENGTH
+    })
+  };
+}
+
 function validateGeminiGeneratePayload(value) {
   if (!isPlainObject(value)) {
     invalidInput('Gemini payload must be an object');
@@ -327,6 +345,7 @@ module.exports = {
   validateCancelPayload,
   validateSendPayload,
   validateLoginPayload,
+  validateTelegramCredentialsPayload,
   validateGeminiGeneratePayload,
   validateGeminiKey,
   validateEnabled,

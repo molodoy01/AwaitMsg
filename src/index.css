@@ -837,6 +837,27 @@ body:has(.auth-panel) {
   outline: none;
 }
 
+.auth-settings-button {
+  position: fixed;
+  top: 54px;
+  right: 30px;
+  z-index: 6;
+  padding: 5px 3px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.auth-settings-button:hover,
+.auth-settings-button:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
 .auth-version {
   position: fixed;
   right: 30px;

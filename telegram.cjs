@@ -138,6 +138,22 @@ async function saveTelegramCredentials(data = {}) {
   };
 }
 
+function saveTelegramApiCredentials(data = {}) {
+  const saved = saveAccountSecrets({
+    API_ID: String(data.API_ID ?? data.apiId ?? ''),
+    API_HASH: String(data.API_HASH ?? data.apiHash ?? '')
+  });
+
+  if (saved) {
+    refreshRuntimeSecrets();
+  }
+
+  return {
+    saved,
+    config: getTelegramConfig()
+  };
+}
+
 async function signOutKeepSessionInternal() {
   const clientToClear = client;
 
@@ -2373,6 +2389,7 @@ function cancelScheduledMessage(chatId, messageId, message, date, time) {
 
   return {
     getTelegramConfig,
+    saveTelegramApiCredentials,
     saveTelegramCredentials,
     signOutKeepSession,
     welcomeBack,
@@ -2401,6 +2418,7 @@ const defaultCore = createTelegramCore();
 module.exports = {
   createTelegramCore,
   getTelegramConfig: (...args) => defaultCore.getTelegramConfig(...args),
+  saveTelegramApiCredentials: (...args) => defaultCore.saveTelegramApiCredentials(...args),
   saveTelegramCredentials: (...args) => defaultCore.saveTelegramCredentials(...args),
   signOutKeepSession: (...args) => defaultCore.signOutKeepSession(...args),
   welcomeBack: (...args) => defaultCore.welcomeBack(...args),

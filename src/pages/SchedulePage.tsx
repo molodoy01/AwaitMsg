@@ -305,7 +305,7 @@ export function SchedulePage(props: SchedulePageProps) {
       return;
     }
 
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
 
     event.preventDefault();
     if (!keyboardDateTimeActiveRef.current) {
@@ -428,7 +428,7 @@ export function SchedulePage(props: SchedulePageProps) {
 
       const centeredLeft = trigger.left + trigger.width / 2 - menu.offsetWidth / 2;
       setTimeMenuPosition({
-        top: Math.max(12, trigger.bottom + 6),
+        top: Math.max(12, trigger.top - menu.offsetHeight - 6),
         left: Math.max(12, Math.min(centeredLeft, window.innerWidth - menu.offsetWidth - 12)),
       });
     };
@@ -594,6 +594,16 @@ export function SchedulePage(props: SchedulePageProps) {
                 RU
               </button>
             </div>
+            <button
+              type="button"
+              className="auth-settings-button"
+              onClick={() => {
+                setShowAuthForm(false);
+                onOpenSettings();
+              }}
+            >
+              {t('topbar.settings')}
+            </button>
             <div className="auth-intro">
               <div className="auth-hero-copy" aria-label={t('hero.signInIntro')}>
                 <span className="auth-hero-line auth-hero-line-main">

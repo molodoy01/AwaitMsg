@@ -34,6 +34,11 @@ export function SettingsView({
   const { locale, setLocale, t } = useLocale();
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [isConfirmingRemoval, setIsConfirmingRemoval] = useState(false);
+  const [telegramApiId, setTelegramApiId] = useState('');
+  const [telegramApiHash, setTelegramApiHash] = useState('');
+  const [telegramCredentialsReady, setTelegramCredentialsReady] = useState(false);
+  const [telegramCredentialsBusy, setTelegramCredentialsBusy] = useState(false);
+  const [telegramCredentialsError, setTelegramCredentialsError] = useState('');
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -49,6 +54,46 @@ export function SettingsView({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
+
+  useEffect(() => {
+    window.telegram.getConfig()
+      .then((result) => {
+        setTelegramCredentialsReady(result.success === true && result.config?.hasCredentials === true);
+      })
+      .catch(() => {
+        setTelegramCredentialsError(t('settings.telegramCredentialsReadFailed'));
+      });
+  }, [t]);
+
+  const handleSaveTelegramCredentials = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (telegramCredentialsBusy) return;
+
+    setTelegramCredentialsBusy(true);
+    setTelegramCredentialsError('');
+
+    try {
+      const result = await window.telegram.saveCredentials({
+        API_ID: telegramApiId.trim(),
+        API_HASH: telegramApiHash.trim(),
+      });
+
+      if (!result.success) {
+        setTelegramCredentialsError(result.error || t('settings.telegramCredentialsSaveFailed'));
+        return;
+      }
+
+      setTelegramCredentialsReady(true);
+      setTelegramApiId('');
+      setTelegramApiHash('');
+    } catch (error) {
+      setTelegramCredentialsError(
+        error instanceof Error ? error.message : t('settings.telegramCredentialsSaveFailed'),
+      );
+    } finally {
+      setTelegramCredentialsBusy(false);
+    }
+  };
 
   return (
     <div className="settings-view">
@@ -80,6 +125,41 @@ export function SettingsView({
               </button>
             </div>
           </section>
+          <section className="settings-view-section">
+            <div className="settings-section-heading-row">
+              <h2>{t('settings.telegramCredentials')}</h2>
+              <span className={`settings-status ${telegramCredentialsReady ? 'is-ready' : 'is-missing'}`}>
+                {telegramCredentialsReady ? t('settings.credentialsReady') : t('settings.credentialsMissing')}
+              </span>
+            </div>
+            <p className="settings-view-description">
+              {t('settings.telegramCredentialsDescription')}
+            </p>
+            <form className="settings-key-form" onSubmit={handleSaveTelegramCredentials}>
+              <input
+                type="text"
+                value={telegramApiId}
+                onChange={(event) => setTelegramApiId(event.target.value)}
+                placeholder={t('settings.apiIdPlaceholder')}
+                inputMode="numeric"
+                autoComplete="off"
+                disabled={telegramCredentialsBusy}
+              />
+              <input
+                type="password"
+                value={telegramApiHash}
+                onChange={(event) => setTelegramApiHash(event.target.value)}
+                placeholder={t('settings.apiHashPlaceholder')}
+                autoComplete="off"
+                disabled={telegramCredentialsBusy}
+              />
+              <button type="submit" disabled={telegramCredentialsBusy || !telegramApiId.trim() || !telegramApiHash.trim()}>
+                {telegramCredentialsBusy ? t('common.loading') : t('common.save')}
+              </button>
+            </form>
+            {telegramCredentialsError && <p className="settings-view-error">{telegramCredentialsError}</p>}
+          </section>
+
           <section className="settings-view-section" style={{ display: 'none' }}>
             <h2>{t('settings.aiAssistant')}</h2>
             <p className="settings-view-description">

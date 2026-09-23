@@ -86,6 +86,7 @@ declare global {
     };
     telegram: {
       getConfig: () => Promise<{ success: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; error?: string }>;
+      saveCredentials: (data: { API_ID: string; API_HASH: string }) => Promise<{ success: boolean; config?: { hasCredentials?: boolean; hasSession?: boolean; connected?: boolean }; error?: string }>;
       getAuthState: () => Promise<TelegramAuthStateResult>;
       signOutKeepSession: () => Promise<TelegramAuthStateResult>;
       welcomeBack: () => Promise<TelegramAuthStateResult>;

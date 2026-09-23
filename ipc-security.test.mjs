@@ -8,6 +8,7 @@ const {
   validateCancelPayload,
   validateChatId,
   validateLoginPayload,
+  validateTelegramCredentialsPayload,
   validateSchedulePayload,
   validateSendPayload,
   validateTimestamp,
@@ -117,6 +118,18 @@ describe('IPC security validation', () => {
     expect(mainSource).not.toContain('loadProductionSecrets');
     expect(mainSource).not.toContain('syncSecureEnv');
     expect(telegramSource).not.toContain('process.env.SESSION_STRING');
+  });
+
+  it('validates the dedicated Telegram credential save payload', () => {
+    expect(validateTelegramCredentialsPayload({
+      API_ID: '123456',
+      API_HASH: 'hash-value'
+    })).toEqual({
+      API_ID: '123456',
+      API_HASH: 'hash-value'
+    });
+    expect(() => validateTelegramCredentialsPayload({ API_ID: '0', API_HASH: 'hash' })).toThrow('API_ID');
+    expect(() => validateTelegramCredentialsPayload({ API_ID: '123', API_HASH: 'x'.repeat(257) })).toThrow('API_HASH');
   });
 
   it('keeps auth IPC responses credential-free', () => {

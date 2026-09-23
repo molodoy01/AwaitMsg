@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('telegram', {
   getConfig: () =>
     ipcRenderer.invoke('telegram-config'),
 
+  saveCredentials: (data) =>
+    ipcRenderer.invoke('telegram-save-credentials', data),
+
   getAuthState: () =>
     ipcRenderer.invoke('telegram-auth-state'),
 

@@ -19,6 +19,7 @@ const {
   validateGeminiKey,
   validateHistoryPayload,
   validateLoginPayload,
+  validateTelegramCredentialsPayload,
   validateQuery,
   validateSchedulePayload,
   validateSendPayload,
@@ -182,6 +183,7 @@ function sendTelegramStatus(status) {
 const {
   connectTelegram,
   loginUser,
+  saveTelegramApiCredentials,
   getTelegramConfig,
   signOutKeepSession,
   welcomeBack,
@@ -471,6 +473,39 @@ ipcMain.handle('telegram-config', async (event) => {
   } catch (error) {
     console.error('Telegram config read error:', error?.code || error?.name || 'unknown');
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('telegram-save-credentials', async (event, data = {}) => {
+  assertTrustedRenderer(
+    event,
+    mainWindow?.webContents,
+    pathToFileURL(path.join(__dirname, 'dist', 'index.html')).href
+  );
+
+  const validated = validateTelegramCredentialsPayload(data);
+
+  try {
+    const result = saveTelegramApiCredentials(validated);
+
+    if (!result.saved) {
+      return { success: false, error: 'Telegram API credentials could not be saved securely.' };
+    }
+
+    return {
+      success: true,
+      config: {
+        hasCredentials: Boolean(result.config?.hasCredentials),
+        hasSession: Boolean(result.config?.hasSession),
+        connected: Boolean(result.config?.connected)
+      }
+    };
+  } catch (error) {
+    console.error('Telegram credentials save error:', error?.code || error?.name || 'unknown');
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Telegram API credentials could not be saved securely.'
+    };
   }
 });
 

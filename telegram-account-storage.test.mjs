@@ -170,6 +170,29 @@ describe('telegram account storage adapter', () => {
     expect(adapter.loadAccountSecrets().signedOut).toBe(false);
   });
 
+  it('updates API credentials without clearing an existing session or sign-out state', () => {
+    const { adapter, files } = createFakeStorage({
+      API_ID_ENCRYPTED: 'ZW5jcnlwdGVkOjEyMw==',
+      API_HASH_ENCRYPTED: 'ZW5jcnlwdGVkOmxvbGQ=',
+      SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24=',
+      SIGNED_OUT: true
+    });
+
+    expect(adapter.saveAccountSecrets({
+      API_ID: '456',
+      API_HASH: 'new-hash'
+    })).toBe(true);
+
+    expect(adapter.loadAccountSecrets()).toEqual({
+      API_ID: '456',
+      API_HASH: 'new-hash',
+      SESSION_STRING: 'session',
+      signedOut: true
+    });
+    expect(JSON.parse(files.get(getConfigPath()))).not.toHaveProperty('API_HASH');
+    expect(JSON.parse(files.get(getConfigPath()))).toHaveProperty('API_HASH_ENCRYPTED');
+  });
+
   it('retains the session when setting signed-out metadata', () => {
     const { adapter, files } = createFakeStorage({
       SESSION_STRING_ENCRYPTED: 'ZW5jcnlwdGVkOnNlc3Npb24='

@@ -21,4 +21,12 @@ describe('SchedulePage keyboard date/time wiring', () => {
     expect(pageSource).toContain('moment-native-date-picker');
     expect(pageSource).toContain('moment-native-time-picker');
   });
+
+  it('supports Space as a sequential date/time separator', () => {
+    expect(pageSource).toContain("if (event.key !== 'Enter' && event.key !== ' ') return;");
+  });
+
+  it('positions the time menu above the clock trigger', () => {
+    expect(pageSource).toContain('trigger.top - menu.offsetHeight - 6');
+  });
 });
