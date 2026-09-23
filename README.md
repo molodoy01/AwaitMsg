@@ -6,15 +6,16 @@ Version 2.2 is an intermediate but working release. Its core flow is deliberatel
 
 ## What XMSGi does
 
-- shows available Telegram chats and dialogs;
-- finds contacts by account name through Telegram global search;
-- sends a message immediately;
-- schedules a message for a chosen date and time;
-- supports silent delivery;
-- supports Telegram message effects;
-- provides a clear sent-message history;
-- lets you sign out while keeping the session for a later return;
-- lets you forget an account and remove its saved data from the device.
+- Telegram chats and dialogs — view available chats, groups, and conversations;
+- global search — search for users and contacts by account name through Telegram search;
+- instant sending — send a message to a contact or chat immediately;
+- scheduled sending — plan a message for a selected date and time;
+- up to 7 files per send — send photos, videos, and other media together with the message;
+- silent sending — send a message without a sound notification for the recipient;
+- message effects — choose an available effect when sending a message;
+- message history — clearly review sent and scheduled messages;
+- session saving — sign out while keeping the session for a quick return;
+- session deletion — forget the account and delete the saved Telegram session from the device.
 
 The feature set is intentionally compact. XMSGi does not replace Telegram or make decisions on the user’s behalf.
 
@@ -72,15 +73,16 @@ XMSGi — desktop-приложение для работы с сообщения
 
 ## Что делает XMSGi
 
-- показывает доступные чаты и диалоги Telegram;
-- ищет контакты по имени аккаунта через глобальный поиск Telegram;
-- позволяет отправить сообщение сразу;
-- позволяет запланировать сообщение на выбранные дату и время;
-- поддерживает отправку без звука;
-- поддерживает выбор эффекта сообщения;
-- показывает понятную историю отправленных сообщений;
-- позволяет выйти из аккаунта, сохранив сессию для следующего входа;
-- позволяет забыть аккаунт и удалить его сохранённые данные с устройства.
+- чаты и диалоги Telegram — просмотр доступных чатов, групп и бесед;
+- глобальный поиск — поиск пользователей и контактов по имени аккаунта через поиск Telegram;
+- мгновенная отправка — отправка сообщения выбранному контакту или в чат сразу;
+- отложенная отправка — планирование сообщения на выбранные дату и время;
+- до 7 файлов за одну отправку — отправка фотографий, видео и других медиафайлов вместе с сообщением;
+- отправка без звука — возможность отправить сообщение без звукового уведомления у получателя;
+- эффекты сообщений — выбор доступного эффекта при отправке сообщения;
+- история сообщений — понятный просмотр отправленных и запланированных сообщений;
+- сохранение сессии — выход из аккаунта с сохранением сессии для быстрого возвращения;
+- удаление сессии — возможность забыть аккаунт и удалить сохранённую Telegram-сессию с устройства.
 
 Набор функций намеренно остаётся компактным. XMSGi не пытается заменить Telegram и не принимает решения вместо пользователя.
 

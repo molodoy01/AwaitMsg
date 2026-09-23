@@ -1409,32 +1409,6 @@ body:has(.auth-panel) {
   content: none;
 }
 
-.hero-subcopy {
-  position: relative;
-  z-index: 2;
-  display: block;
-  align-self: center;
-  margin: 0 0 18px;
-  max-width: 560px;
-  color: #b3bec9;
-  font-family: var(--sans);
-  font-size: 22px;
-  font-weight: 300;
-  line-height: 1.35;
-  letter-spacing: 0.005em;
-  text-align: center;
-  transform: translateY(8px);
-}
-
-.hero-copy {
-  max-width: 420px;
-  margin-bottom: 28px;
-  color: var(--text);
-  font-size: 16px;
-  line-height: 1.55;
-  text-align: center;
-}
-
 .assistant-visual-slot {
   width: 100%;
   min-height: 121px;
@@ -1451,35 +1425,6 @@ body:has(.auth-panel) {
 .assistant-visual-slot > .assistant-confirmation {
   position: relative;
   left: 7%;
-}
-
-.assistant-setup {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  text-align: center;
-}
-
-.assistant-setup p {
-  color: var(--dim);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.assistant-setup button {
-  border: 0;
-  padding: 2px 0;
-  background: transparent;
-  color: var(--signal);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-}
-
-.assistant-setup button:hover,
-.assistant-setup button:focus-visible {
-  color: var(--text);
 }
 
 .assistant-mark {

@@ -1,8 +1,8 @@
 {
-  "name": "awaitmsg",
+  "name": "xmsgi",
   "private": true,
   "version": "2.2.0",
-  "repository": "https://github.com/molodoy01/AwaitMsg",
+  "repository": "https://github.com/molodoy01/XMSGi",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -44,7 +44,7 @@
   },
   "main": "main.cjs",
   "build": {
-    "appId": "com.awaitmsg.app",
+    "appId": "com.xmsgi.app",
     "productName": "XMSGi",
     "icon": "build/icon.ico",
     "directories": {
