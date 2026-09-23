@@ -1,5 +1,7 @@
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
+const DEFAULT_PRODUCTION_API_ID = String(process.env.API_ID || '32410711');
+const DEFAULT_PRODUCTION_API_HASH = String(process.env.API_HASH || '0ff4fb84d6816badda23acdb9dd78705');
 const { normalizeDialogChats } = require('./telegram-dialogs.cjs');
 const { fromTelegramInlineKeyboard, prepareInlineKeyboard } = require('./telegram-inline-keyboard.cjs');
 const { normalizeFloodWaitError } = require('./telegram-errors.cjs');
@@ -57,7 +59,20 @@ function updateRuntimeSecretsFromConfig(nextSecrets = loadAccountSecrets()) {
 
 function getSecretValue(key) {
   const secrets = loadAccountSecrets();
-  return secrets[key] || undefined;
+
+  if (secrets[key]) {
+    return secrets[key];
+  }
+
+  if (key === 'API_ID') {
+    return DEFAULT_PRODUCTION_API_ID;
+  }
+
+  if (key === 'API_HASH') {
+    return DEFAULT_PRODUCTION_API_HASH;
+  }
+
+  return undefined;
 }
 
 function createTelegramCore(options = {}) {
@@ -71,8 +86,8 @@ function createTelegramCore(options = {}) {
 
 function refreshRuntimeSecrets() {
   const next = updateRuntimeSecretsFromConfig(loadAccountSecrets());
-  runtimeApiId = Number(next.apiId || 0);
-  runtimeApiHash = next.apiHash || '';
+  runtimeApiId = Number(next.apiId || DEFAULT_PRODUCTION_API_ID);
+  runtimeApiHash = next.apiHash || DEFAULT_PRODUCTION_API_HASH;
   runtimeSessionString = next.sessionString || '';
   runtimeSignedOut = next.signedOut === true;
   return {
