@@ -15,7 +15,7 @@ XMSGi is a lightweight desktop application for sending and scheduling Telegram m
 ## Download
 **XMSGi 2.2.0 — Windows Portable**
 
-Download the latest Windows `.exe` from [GitHub Releases](https://chatgpt.com/releases).
+Download the latest Windows `.exe` from [GitHub Releases](https://github.com/molodoy01/XMSGi/releases/tag/v2.2.0).
 
 ## How it works
 XMSGi connects directly to Telegram using the MTProto protocol and your personal Telegram account.
