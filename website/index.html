@@ -287,6 +287,58 @@
             padding: 0 0 100px;
         }
 
+        .ai-section {
+            padding: 0 0 100px;
+        }
+
+        .ai-panel {
+            display: grid;
+            grid-template-columns: 1.1fr .9fr;
+            gap: 12px;
+        }
+
+        .ai-copy,
+        .ai-details {
+            padding: 30px;
+            border: 1px solid var(--border);
+            border-radius: 15px;
+            background: linear-gradient(145deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+        }
+
+        .ai-copy h2 {
+            margin: 0 0 10px;
+            font-size: clamp(28px, 4vw, 42px);
+            letter-spacing: -.045em;
+            line-height: 1.05;
+        }
+
+        .ai-copy p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 15px;
+        }
+
+        .ai-details {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .ai-details strong {
+            display: block;
+            margin-bottom: 12px;
+            color: var(--text);
+            font-size: 15px;
+        }
+
+        .ai-details ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .ai-details li + li {
+            margin-top: 8px;
+        }
+
         .transparency-panel {
             display: grid;
             grid-template-columns: 1.1fr .9fr;
@@ -374,6 +426,7 @@
         /* TABLET */
 
         @media (max-width: 800px) {
+            .ai-panel,
             .transparency-panel {
                 grid-template-columns: 1fr;
             }
@@ -449,6 +502,7 @@
         <a class="brand" href="#">XMSGi</a>
 
         <div class="nav-links">
+            <a href="#how-it-works">How it works</a>
             <a href="#trust">Trust</a>
             <a href="https://github.com/molodoy01/XMSGi">GitHub</a>
         </div>
@@ -470,7 +524,7 @@
             </h1>
 
             <p class="hero-description">
-                A stylish, functional way to schedule Telegram messages as reminders for yourself or thoughtful notes for the people close to you.
+                Write, schedule, and review Telegram messages from your own account. XMSGi keeps the timing in your hands.
             </p>
 
             <div class="actions">
@@ -535,6 +589,28 @@
     </section>
 
 
+    <section class="ai-section" id="how-it-works">
+        <div class="container">
+            <div class="ai-panel">
+                <div class="ai-copy">
+                    <p class="section-kicker">How it works</p>
+                    <h2>Simple from the first step.</h2>
+                    <p>Open XMSGi, pick a Telegram chat, prepare the message, and decide whether it should go now or later.</p>
+                </div>
+                <div class="ai-details">
+                    <strong>Your message, your decision</strong>
+                    <ul>
+                        <li>Choose an available chat, group, or dialog from your Telegram account.</li>
+                        <li>Write the text and add attachments when needed.</li>
+                        <li>Send it immediately or set a chosen date and time.</li>
+                        <li>Use silent delivery or a message effect when required.</li>
+                        <li>Review the outcome in the sending history.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <section class="transparency-section" id="trust">
         <div class="container">
             <div class="transparency-panel">
@@ -563,10 +639,10 @@
 
             <div class="download-box">
 
-                <h2>Ready to send on your schedule?</h2>
+                <h2>Plan the moments that matter.</h2>
 
                 <p>
-                    XMSGi 2.2 is distributed as a portable application for Windows. No installer is required.
+                    A stylish, functional way to schedule Telegram messages as reminders for yourself or thoughtful notes for the people close to you.
                 </p>
 
                 <a
