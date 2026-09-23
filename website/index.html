@@ -270,19 +270,6 @@
             -webkit-backdrop-filter: blur(8px);
         }
 
-        /* FEATURES */
-
-        .features-section {
-            padding: 0 0 100px;
-        }
-
-        .section-heading {
-            max-width: 620px;
-            margin: 0 0 28px;
-        }
-
-        .section-heading h2,
-        .ai-copy h2,
         .transparency-copy h2 {
             margin: 0 0 10px;
             font-size: clamp(28px, 4vw, 42px);
@@ -290,70 +277,23 @@
             line-height: 1.05;
         }
 
-        .section-heading p,
-        .ai-copy p,
         .transparency-copy p {
             margin: 0;
             color: var(--muted);
             font-size: 15px;
         }
 
-        .features {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-        }
-
-        .feature {
-            min-height: 185px;
-            padding: 27px;
-
-            border: 1px solid var(--border);
-            border-radius: 15px;
-
-            background:
-                linear-gradient(
-                    145deg,
-                    rgba(255,255,255,.045),
-                    rgba(255,255,255,.018)
-                );
-        }
-
-        .feature-number {
-            margin-bottom: 25px;
-            color: #747b8d;
-            font-size: 12px;
-            letter-spacing: .08em;
-        }
-
-        .feature h3 {
-            margin: 0 0 8px;
-            font-size: 17px;
-            letter-spacing: -.02em;
-        }
-
-        .feature p {
-            margin: 0;
-            color: var(--muted);
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        .ai-section,
         .transparency-section {
             padding: 0 0 100px;
         }
 
-        .ai-panel,
         .transparency-panel {
             display: grid;
             grid-template-columns: 1.1fr .9fr;
             gap: 12px;
         }
 
-        .ai-copy,
         .transparency-copy,
-        .ai-details,
         .transparency-details {
             padding: 30px;
             border: 1px solid var(--border);
@@ -361,13 +301,11 @@
             background: linear-gradient(145deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
         }
 
-        .ai-details,
         .transparency-details {
             color: var(--muted);
             font-size: 14px;
         }
 
-        .ai-details strong,
         .transparency-details strong {
             display: block;
             margin-bottom: 12px;
@@ -375,13 +313,11 @@
             font-size: 15px;
         }
 
-        .ai-details ul,
         .transparency-details ul {
             margin: 0;
             padding-left: 18px;
         }
 
-        .ai-details li + li,
         .transparency-details li + li {
             margin-top: 8px;
         }
@@ -438,17 +374,8 @@
         /* TABLET */
 
         @media (max-width: 800px) {
-            .features {
-                grid-template-columns: 1fr;
-            }
-
-            .ai-panel,
             .transparency-panel {
                 grid-template-columns: 1fr;
-            }
-
-            .feature {
-                min-height: auto;
             }
         }
 
@@ -499,10 +426,6 @@
                 bottom: 18px;
             }
 
-            .features-section {
-                padding-bottom: 80px;
-            }
-
             .download-section {
                 padding-bottom: 80px;
             }
@@ -526,8 +449,6 @@
         <a class="brand" href="#">XMSGi</a>
 
         <div class="nav-links">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How it works</a>
             <a href="#trust">Trust</a>
             <a href="https://github.com/molodoy01/XMSGi">GitHub</a>
         </div>
@@ -549,7 +470,7 @@
             </h1>
 
             <p class="hero-description">
-                XMSGi 2.2 is a desktop app for working with Telegram messages through your personal Telegram account. Write a message, send it now, or schedule it for the right moment.
+                A stylish, functional way to schedule Telegram messages as reminders for yourself or thoughtful notes for the people close to you.
             </p>
 
             <div class="actions">
@@ -613,100 +534,6 @@
         </div>
     </section>
 
-
-    <!-- FEATURES -->
-
-    <section class="features-section" id="features">
-        <div class="container">
-
-            <div class="section-heading">
-                <p class="section-kicker">XMSGi 2.2</p>
-                <h2>A focused desktop workspace for Telegram messages.</h2>
-                <p>Choose a chat, prepare the message, add media when needed, and decide whether it should be sent now or when the moment arrives.</p>
-            </div>
-
-            <div class="features">
-
-                <article class="feature">
-                    <div class="feature-number">01</div>
-                    <h3>Chats and dialogs</h3>
-                    <p>Review the chats, groups, and dialogs available from your Telegram account.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">02</div>
-                    <h3>Global search</h3>
-                    <p>Find users and contacts by account name through Telegram global search.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">03</div>
-                    <h3>Send immediately</h3>
-                    <p>Send a message right away when there is no reason to wait.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">04</div>
-                    <h3>Schedule messages</h3>
-                    <p>Choose a date and time, then leave the message ready for the moment you want.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">05</div>
-                    <h3>Silent delivery</h3>
-                    <p>Send a message without a sound notification when the timing requires it.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">06</div>
-                    <h3>Message effects</h3>
-                    <p>Pick an available Telegram message effect when sending a message.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">07</div>
-                    <h3>Attachments</h3>
-                    <p>Send up to 7 files, photos, or media items in one message.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">08</div>
-                    <h3>History</h3>
-                    <p>Review sent and scheduled messages in one clear history view.</p>
-                </article>
-
-                <article class="feature">
-                    <div class="feature-number">09</div>
-                    <h3>Session control</h3>
-                    <p>Sign out and keep the Telegram session for later, or forget the account and remove saved data from the device.</p>
-                </article>
-
-            </div>
-
-        </div>
-    </section>
-
-    <section class="ai-section" id="how-it-works">
-        <div class="container">
-            <div class="ai-panel">
-                <div class="ai-copy">
-                    <p class="section-kicker">How it works</p>
-                    <h2>Simple from the first step.</h2>
-                    <p>Open XMSGi, pick a Telegram chat, prepare the message, and decide whether it should go now or later.</p>
-                </div>
-                <div class="ai-details">
-                    <strong>Your message, your decision</strong>
-                    <ul>
-                        <li>Choose an available chat, group, or dialog from your Telegram account.</li>
-                        <li>Write the text and add attachments when needed.</li>
-                        <li>Send it immediately or set a chosen date and time.</li>
-                        <li>Use silent delivery or a message effect when required.</li>
-                        <li>Review the outcome in the sending history.</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </section>
 
     <section class="transparency-section" id="trust">
         <div class="container">
