@@ -193,4 +193,80 @@ describe('useChats persistence merge', () => {
       );
     });
   });
+
+  it('removes only the requested chat from the local list', async () => {
+    const secondChat: Chat = {
+      id: 'second-chat',
+      name: 'Second chat',
+      type: 'group',
+    };
+    saveChats([savedChannel, secondChat]);
+    window.telegram = {
+      getChats: vi.fn().mockResolvedValue({ success: true, chats: [] }),
+    } as unknown as Window['telegram'];
+
+    const { result } = renderHook(() => useChats({ connected: false }));
+
+    await waitFor(() => {
+      expect(result.current.chats).toHaveLength(2);
+    });
+
+    act(() => {
+      result.current.handleRemoveChat(savedChannel);
+    });
+
+    expect(result.current.chats).toEqual([secondChat]);
+    expect(result.current.selectedChat?.id).toBe(secondChat.id);
+  });
+
+  it('ignores legacy hidden ids after the hidden-state migration', async () => {
+    const channel: Chat = {
+      id: '-1004431408545',
+      name: 'Новости топ 5 дня',
+      username: 'NewsWithoutNoise24',
+      type: 'channel',
+    };
+    window.localStorage.setItem('awaitmsg_hidden_chats', JSON.stringify([channel.id]));
+    saveChats([channel]);
+    window.telegram = {
+      getChats: vi.fn().mockResolvedValue({ success: true, chats: [channel] }),
+      getChatAvatar: vi.fn().mockResolvedValue({ success: false }),
+    } as unknown as Window['telegram'];
+
+    const { result } = renderHook(() => useChats({ connected: true }));
+
+    await waitFor(() => {
+      expect(result.current.chats).toEqual([expect.objectContaining(channel)]);
+    });
+
+    expect(window.localStorage.getItem('awaitmsg_hidden_chats_v2')).toBeNull();
+    expect(result.current.chats.some((chat) => chat.id === channel.id)).toBe(true);
+  });
+
+  it('persists the new hidden state for a channel across hook reloads', async () => {
+    const channel: Chat = {
+      id: '-1004431408545',
+      name: 'Новости топ 5 дня',
+      username: 'NewsWithoutNoise24',
+      type: 'channel',
+    };
+    const otherChat: Chat = { id: 'other-chat', name: 'Other chat', type: 'private' };
+    saveChats([channel, otherChat]);
+    window.telegram = {
+      getChats: vi.fn().mockResolvedValue({ success: true, chats: [channel, otherChat] }),
+      getChatAvatar: vi.fn().mockResolvedValue({ success: false }),
+    } as unknown as Window['telegram'];
+
+    const firstRun = renderHook(() => useChats({ connected: true }));
+    await waitFor(() => expect(firstRun.result.current.chats).toHaveLength(2));
+
+    act(() => firstRun.result.current.handleRemoveChat(channel));
+    expect(firstRun.result.current.chats.map((chat) => chat.id)).toEqual([otherChat.id]);
+    expect(JSON.parse(window.localStorage.getItem('awaitmsg_hidden_chats_v2') || '[]')).toEqual([channel.id]);
+    firstRun.unmount();
+
+    const reloaded = renderHook(() => useChats({ connected: false }));
+    await waitFor(() => expect(reloaded.result.current.chats).toEqual([expect.objectContaining(otherChat)]));
+    expect(reloaded.result.current.chats.some((chat) => chat.id === channel.id)).toBe(false);
+  });
 });

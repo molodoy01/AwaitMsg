@@ -9,6 +9,14 @@ const packageJson = JSON.parse(
 );
 
 describe('production packaging', () => {
+  it('publishes the XMSGi 2.2.0 portable package metadata', () => {
+    expect(packageJson.version).toBe('2.2.0');
+    expect(packageJson.build.productName).toBe('XMSGi');
+    expect(packageJson.build.icon).toBe('build/icon.ico');
+    expect(packageJson.build.win.target).toEqual(['portable']);
+    expect(packageJson.build.asar).toBe(true);
+  });
+
   it('includes every runtime file required by the Electron main process', () => {
     const productionFiles = new Set(packageJson.build.files);
     const requiredRuntimeFiles = [
@@ -17,6 +25,7 @@ describe('production packaging', () => {
       'chat-storage.cjs',
       'gemini.cjs',
       'telegram.cjs',
+      'telegram-dialogs.cjs',
       'telegram-inline-keyboard.cjs',
       'telegram-errors.cjs',
       'telegram-account-storage.cjs',
@@ -32,6 +41,9 @@ describe('production packaging', () => {
       expect(productionFiles.has(file), `${file} is missing from build.files`).toBe(true);
       expect(fs.existsSync(path.join(projectRoot, file))).toBe(true);
     }
+
+    expect(productionFiles.has('telegram-inline-keyboard.cjs')).toBe(true);
+    expect(productionFiles.has('telegram-dialogs.cjs')).toBe(true);
   });
 
   it('does not include the project root .env in production files', () => {

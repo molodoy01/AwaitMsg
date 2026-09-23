@@ -7,10 +7,10 @@
 
     <meta
         name="description"
-        content="XMSGi — a desktop app for planning Telegram messages with AI."
+        content="XMSGi — a desktop app for writing and scheduling Telegram messages from your own account."
     >
 
-    <title>XMSGi — Plan with AI</title>
+    <title>XMSGi — Telegram messages, on your time</title>
 
     <style>
         :root {
@@ -130,6 +130,16 @@
             margin: 0 auto;
             color: var(--muted);
             font-size: 18px;
+        }
+
+        .eyebrow,
+        .section-kicker {
+            margin: 0 0 14px;
+            color: #aeb7ff;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .14em;
+            text-transform: uppercase;
         }
 
         .actions {
@@ -266,6 +276,28 @@
             padding: 0 0 100px;
         }
 
+        .section-heading {
+            max-width: 620px;
+            margin: 0 0 28px;
+        }
+
+        .section-heading h2,
+        .ai-copy h2,
+        .transparency-copy h2 {
+            margin: 0 0 10px;
+            font-size: clamp(28px, 4vw, 42px);
+            letter-spacing: -.045em;
+            line-height: 1.05;
+        }
+
+        .section-heading p,
+        .ai-copy p,
+        .transparency-copy p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 15px;
+        }
+
         .features {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -305,6 +337,53 @@
             color: var(--muted);
             font-size: 14px;
             line-height: 1.5;
+        }
+
+        .ai-section,
+        .transparency-section {
+            padding: 0 0 100px;
+        }
+
+        .ai-panel,
+        .transparency-panel {
+            display: grid;
+            grid-template-columns: 1.1fr .9fr;
+            gap: 12px;
+        }
+
+        .ai-copy,
+        .transparency-copy,
+        .ai-details,
+        .transparency-details {
+            padding: 30px;
+            border: 1px solid var(--border);
+            border-radius: 15px;
+            background: linear-gradient(145deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+        }
+
+        .ai-details,
+        .transparency-details {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .ai-details strong,
+        .transparency-details strong {
+            display: block;
+            margin-bottom: 12px;
+            color: var(--text);
+            font-size: 15px;
+        }
+
+        .ai-details ul,
+        .transparency-details ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .ai-details li + li,
+        .transparency-details li + li {
+            margin-top: 8px;
         }
 
         /* DOWNLOAD */
@@ -360,6 +439,11 @@
 
         @media (max-width: 800px) {
             .features {
+                grid-template-columns: 1fr;
+            }
+
+            .ai-panel,
+            .transparency-panel {
                 grid-template-columns: 1fr;
             }
 
@@ -443,6 +527,8 @@
 
         <div class="nav-links">
             <a href="#features">Features</a>
+            <a href="#assistant">AI Assistant</a>
+            <a href="#transparency">Transparency</a>
             <a href="https://github.com/molodoy01/AwaitMsg">GitHub</a>
         </div>
     </nav>
@@ -456,21 +542,21 @@
         <div class="container">
 
             <h1>
-                Plan with AI.
+                Telegram messages,
                 <span class="gradient">
-                    Be more productive.
+                    when you choose.
                 </span>
             </h1>
 
             <p class="hero-description">
-                A desktop app for planning Telegram messages with AI.
+                Write, schedule, and review Telegram messages from your own account. XMSGi keeps the timing in your hands.
             </p>
 
             <div class="actions">
 
                 <a
                     class="button primary"
-                    href="https://github.com/molodoy01/AwaitMsg/releases/tag/v2.1.7"
+                    href="https://github.com/molodoy01/AwaitMsg/releases/tag/v2.2.0"
                 >
                     Download for Windows
                 </a>
@@ -533,6 +619,12 @@
     <section class="features-section" id="features">
         <div class="container">
 
+            <div class="section-heading">
+                <p class="section-kicker">XMSGi 2.2.0</p>
+                <h2>A focused workspace for messages that should wait.</h2>
+                <p>Choose a Telegram dialog, write the message, set the moment, and keep the result visible in one desktop view.</p>
+            </div>
+
             <div class="features">
 
                 <article class="feature">
@@ -541,7 +633,7 @@
                     <h3>Schedule messages</h3>
 
                     <p>
-                        Exact timing. No forgotten messages.
+                        Choose a date and time, then let Telegram confirm the scheduled message.
                     </p>
                 </article>
 
@@ -552,7 +644,7 @@
                     <h3>Verified scheduling</h3>
 
                     <p>
-                        Telegram confirms that your message is scheduled.
+                        Upcoming and sent messages stay available for review, cancellation, and local history.
                     </p>
                 </article>
 
@@ -560,15 +652,74 @@
                 <article class="feature">
                     <div class="feature-number">03</div>
 
-                    <h3>AI Assistant</h3>
+                    <h3>Chats and channels</h3>
 
                     <p>
-                        Create messages faster with AI.
+                        Browse Telegram dialogs, including private chats, groups, and channels.
                     </p>
+                </article>
+
+                <article class="feature">
+                    <div class="feature-number">04</div>
+                    <h3>Attachments</h3>
+                    <p>Attach several files, keep compact thumbnails, and preview photos on hover.</p>
+                </article>
+
+                <article class="feature">
+                    <div class="feature-number">05</div>
+                    <h3>Message controls</h3>
+                    <p>Use Telegram silent delivery, message effects, and inline keyboard buttons when available.</p>
+                </article>
+
+                <article class="feature">
+                    <div class="feature-number">06</div>
+                    <h3>System Tray</h3>
+                    <p>Close the window to the background, reopen it from the tray, or exit deliberately.</p>
                 </article>
 
             </div>
 
+        </div>
+    </section>
+
+    <section class="ai-section" id="assistant">
+        <div class="container">
+            <div class="ai-panel">
+                <div class="ai-copy">
+                    <p class="section-kicker">Optional Gemini Assistant</p>
+                    <h2>Describe a message in your own words.</h2>
+                    <p>The Assistant can turn a request into a proposed chat, message, date, and time. It asks for clarification when something is missing or ambiguous.</p>
+                </div>
+                <div class="ai-details">
+                    <strong>How it works</strong>
+                    <ul>
+                        <li>Enable the Assistant and add your own Gemini API key in Settings.</li>
+                        <li>XMSGi sends your request, current date/time, and available chat names to Gemini.</li>
+                        <li>Review the proposed details and confirm the send yourself.</li>
+                        <li>It is an optional online helper, not an autonomous agent or offline AI.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="transparency-section" id="transparency">
+        <div class="container">
+            <div class="transparency-panel">
+                <div class="transparency-copy">
+                    <p class="section-kicker">Project transparency</p>
+                    <h2>Your account, your session, your timing.</h2>
+                    <p>XMSGi is open source and works with a Telegram user account, not a Telegram bot.</p>
+                </div>
+                <div class="transparency-details">
+                    <strong>Local by design</strong>
+                    <ul>
+                        <li>Telegram session data is stored locally on the device.</li>
+                        <li>Sensitive configuration is protected with Electron safeStorage where available.</li>
+                        <li>Gemini is optional and uses the API key you configure.</li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -583,12 +734,12 @@
                 <h2>Ready to plan smarter?</h2>
 
                 <p>
-                    XMSGi for Windows · 69 tests passed
+                    XMSGi 2.2.0 for Windows · portable release
                 </p>
 
                 <a
                     class="button primary"
-                    href="https://github.com/molodoy01/AwaitMsg/releases/tag/v2.1.7"
+                    href="https://github.com/molodoy01/AwaitMsg/releases/tag/v2.2.0"
                 >
                     Download for Windows
                 </a>

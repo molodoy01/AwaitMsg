@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  loadHiddenChats,
+  loadPersistentChats,
   loadUpcoming,
+  saveHiddenChats,
+  savePersistentChats,
   saveUpcoming,
 } from './storage';
 import type { ScheduledMessage } from '@/types';
@@ -117,5 +121,48 @@ describe('Upcoming storage', () => {
 
     expect(loadUpcoming('personal')).toEqual([personalMessage]);
     expect(loadUpcoming('workspace')).toEqual([workspaceMessage]);
+  });
+});
+
+describe('Chat storage migration', () => {
+  let storage: ReturnType<typeof createMemoryStorage>;
+
+  beforeEach(() => {
+    storage = createMemoryStorage();
+    vi.stubGlobal('localStorage', storage);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('persists hidden chat ids under the v2 key and reloads them', () => {
+    saveHiddenChats(['-1004431408545', 'private-1']);
+
+    expect(loadHiddenChats()).toEqual(['-1004431408545', 'private-1']);
+    expect(storage.getItem('awaitmsg_hidden_chats_v2')).toBe(
+      JSON.stringify(['-1004431408545', 'private-1']),
+    );
+  });
+
+  it('migrates legacy chats to persistent storage once', async () => {
+    const channel = { id: '-1004431408545', name: 'Новости топ 5 дня', type: 'channel' as const };
+    storage.setItem('awaitmsg_chats', JSON.stringify([channel]));
+    const saveSavedChats = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('telegram', { loadSavedChats: vi.fn().mockResolvedValue([]), saveSavedChats });
+
+    await expect(loadPersistentChats()).resolves.toEqual([channel]);
+    expect(saveSavedChats).toHaveBeenCalledWith([channel]);
+  });
+
+  it('round-trips v2 persistent chats without losing a channel id', async () => {
+    const chats = [{ id: '-1004431408545', name: 'Новости топ 5 дня', type: 'channel' as const }];
+    const saveSavedChats = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('telegram', { saveSavedChats });
+
+    await savePersistentChats(chats);
+
+    expect(await loadPersistentChats()).toEqual(chats);
+    expect(saveSavedChats).toHaveBeenCalledWith(chats);
   });
 });

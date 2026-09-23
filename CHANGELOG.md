@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.2.0 - 2026-09-23
+
+### Highlights
+
+- Added the XMSGi logo to the authentication and registration screens.
+- Added System Tray support with Open and Exit actions.
+- Added the complete Telegram dialog list, including channel visibility fixes.
+- Added migration for the new hidden-chat state.
+- Added a small hover `x` control for removing individual chats.
+- Improved attachment UX with stable composer layout, compact thumbnails, and image long-press preview.
+
+### Packaging and quality
+
+- Updated the Windows production package to the XMSGi portable release format.
+- Included the required Telegram dialog and inline-keyboard runtime modules in packaging.
+- Cleaned up related code and expanded regression coverage for the released changes.
+
 ## 2.1.7 - 2026-09-13
 
 ### Highlights

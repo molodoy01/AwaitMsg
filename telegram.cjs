@@ -1,5 +1,6 @@
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
+const { normalizeDialogChats } = require('./telegram-dialogs.cjs');
 const { fromTelegramInlineKeyboard, prepareInlineKeyboard } = require('./telegram-inline-keyboard.cjs');
 const { normalizeFloodWaitError } = require('./telegram-errors.cjs');
 const {
@@ -1065,19 +1066,10 @@ async function getChatsInternal() {
   }
 
   const dialogs = await telegramRequest(() => client.getDialogs({
-    limit: 100
+    limit: undefined
   }));
 
-  const chats = dialogs.map((dialog) => {
-    const entity = dialog?.entity || null;
-
-    return {
-      id: dialog.id?.toString(),
-      name: dialog.name || getEntityDisplayName(entity),
-      username: entity?.username || '',
-      type: getPublicChatType(entity) || 'private'
-    };
-  });
+  const chats = normalizeDialogChats(dialogs, getPublicChatType, getEntityDisplayName);
 
   try {
 

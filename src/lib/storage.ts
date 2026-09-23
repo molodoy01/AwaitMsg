@@ -10,7 +10,7 @@ const SENT_KEYS: Record<MessageHistoryScope, string> = {
   personal: 'awaitmsg_sent',
   workspace: 'awaitmsg_workspace_sent',
 };
-const HIDDEN_CHATS_KEY = 'awaitmsg_hidden_chats';
+const HIDDEN_CHATS_KEY = 'awaitmsg_hidden_chats_v2';
 const CHATS_KEY = 'awaitmsg_chats';
 const TEMPLATES_KEY = 'awaitmsg_templates';
 let persistentChatWriteQueue = Promise.resolve();

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { app, BrowserWindow, ipcMain, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, safeStorage, shell } = require('electron');
 
 if (!app.isPackaged && process.env.npm_lifecycle_event !== 'start') {
   require('dotenv').config();
@@ -36,6 +36,7 @@ const CHAT_STORAGE_PATH = path.join(
 );
 
 let mainWindow = null;
+let tray = null;
 let isQuitting = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -43,11 +44,16 @@ if (!hasSingleInstanceLock) {
   app.quit();
 }
 
-app.on('second-instance', () => {
+function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
   if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
   mainWindow.focus();
+}
+
+app.on('second-instance', () => {
+  showMainWindow();
 });
 
 function readSecureConfig() {
@@ -255,6 +261,13 @@ function createWindow() {
     }
   });
 
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return;
+
+    event.preventDefault();
+    mainWindow.hide();
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url === 'https://aistudio.google.com/app/apikey') {
       shell.openExternal(url);
@@ -272,6 +285,42 @@ function createWindow() {
   } else {
     mainWindow.loadURL(appUrl);
   }
+}
+
+function requestQuit() {
+  if (isQuitting) return;
+
+  isQuitting = true;
+
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+
+  console.log('XMSGi shutting down.');
+
+  shutdownTelegram()
+    .catch((error) => {
+      console.error('Telegram shutdown error:', error?.code || error?.name || 'unknown');
+    })
+    .finally(() => {
+      console.log('XMSGi shutdown complete.');
+      app.quit();
+    });
+}
+
+function createTray() {
+  if (tray) return;
+
+  tray = new Tray(path.join(__dirname, 'build', 'icon.ico'));
+  tray.setToolTip('XMSGi');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'XMSGi', enabled: false },
+    { type: 'separator' },
+    { label: 'Open XMSGi', click: showMainWindow },
+    { label: 'Exit', click: requestQuit },
+  ]));
+  tray.on('double-click', showMainWindow);
 }
 
 ipcMain.handle('gemini-generate', async (event, data = {}) => {
@@ -788,6 +837,7 @@ app.whenReady().then(() => {
 
   console.log('XMSGi started.');
   createWindow();
+  createTray();
 
   app.on('activate', () => {
 
@@ -795,32 +845,27 @@ app.whenReady().then(() => {
       createWindow();
     }
 
+    createTray();
+
   });
 
 });
 
 
 app.on('window-all-closed', () => {
-
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-
+  // Closing the window is handled by mainWindow.close and keeps the app in the tray.
 });
 
 app.on('before-quit', (event) => {
   if (isQuitting) return;
 
   event.preventDefault();
-  isQuitting = true;
-  console.log('XMSGi shutting down.');
+  requestQuit();
+});
 
-  shutdownTelegram()
-    .catch((error) => {
-      console.error('Telegram shutdown error:', error?.code || error?.name || 'unknown');
-    })
-    .finally(() => {
-      console.log('XMSGi shutdown complete.');
-      app.exit();
-    });
+app.on('will-quit', () => {
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });

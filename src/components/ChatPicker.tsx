@@ -167,18 +167,18 @@ export function ChatPicker({
                 </span>
               )}
             </span>
-            {selectedChat?.id === chat.id && (
-              <button
-                className="msg-btn delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveChat(chat);
-                }}
-                style={{ opacity: 1 }}
-              >
-                ✕
-              </button>
-            )}
+            <button
+              type="button"
+              className="chat-option-remove"
+              aria-label={`${t('common.remove')} ${chat.name}`}
+              title={t('common.remove')}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemoveChat(chat);
+              }}
+            >
+              ×
+            </button>
           </div>
         ))}
       </div>

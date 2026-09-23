@@ -12,14 +12,6 @@ export function useChats({ connected }: { connected: boolean }) {
   const [persistentChatsReady, setPersistentChatsReady] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [chatPermissions, setChatPermissions] = useState<Record<string, ChatPermissions>>({});
-  const [removeModal, setRemoveModal] = useState<{
-    show: boolean;
-    chat: Chat | null;
-  }>({
-    show: false,
-    chat: null,
-  });
-
   useEffect(() => {
     let cancelled = false;
 
@@ -226,40 +218,23 @@ export function useChats({ connected }: { connected: boolean }) {
   }
 
   function handleRemoveChat(chat: Chat) {
-    setRemoveModal({
-      show: true,
-      chat,
-    });
-  }
-
-  function confirmRemoveChat() {
-    if (!removeModal.chat) return;
-
-    const chatToRemove = removeModal.chat;
     const hidden = loadHiddenChats();
 
-    if (!hidden.includes(chatToRemove.id)) {
-      saveHiddenChats([...hidden, chatToRemove.id]);
+    if (!hidden.includes(chat.id)) {
+      saveHiddenChats([...hidden, chat.id]);
     }
 
-    const updated = chats.filter(
-      (chat) => chat.id !== chatToRemove.id
-    );
+    const updated = chats.filter((item) => item.id !== chat.id);
 
     setChats((current) => {
-      const latest = current.filter((chat) => chat.id !== chatToRemove.id);
+      const latest = current.filter((item) => item.id !== chat.id);
       void savePersistentChats(latest);
       return latest;
     });
 
-    if (selectedChat?.id === chatToRemove.id) {
+    if (selectedChat?.id === chat.id) {
       setSelectedChat(updated.length > 0 ? updated[0] : null);
     }
-
-    setRemoveModal({
-      show: false,
-      chat: null,
-    });
   }
 
   return {
@@ -270,10 +245,7 @@ export function useChats({ connected }: { connected: boolean }) {
     chatPermissions,
     selectedChatPermissions: selectedChat ? chatPermissions[selectedChat.id] || null : null,
     refreshChatPermissions,
-    removeModal,
-    setRemoveModal,
     handleAddChat,
     handleRemoveChat,
-    confirmRemoveChat,
   };
 }

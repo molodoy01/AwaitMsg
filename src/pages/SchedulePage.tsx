@@ -1,12 +1,14 @@
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { CalendarDays, Clock, Eraser, Menu, Paperclip, Send, X } from 'lucide-react';
+import { CalendarDays, Clock, Menu, Paperclip, X } from 'lucide-react';
+import xmsgiLogoWhite from '@/assets/xmsgi-logo-white.svg';
 import { Notification } from '@/components/Notification';
-import { ChatRemoveModal } from '@/components/ChatRemoveModal';
 import { ChatPicker } from '@/components/ChatPicker';
 import { MessagesPanel } from '@/components/MessagesPanel';
 import { getMessageMaxLength, insertMessageText, limitMessageText } from '@/lib/messageLimits';
+import { getNextDateTimeKeyboardField, isValidDateTimeKeyboardField, type DateTimeKeyboardField } from '@/lib/dateTimeKeyboard';
+import { resetMessageOptionsForNewMessage } from '@/lib/messageComposer';
 import type { AssistantIntent } from '@/hooks/useAssistant';
 import type { Chat, ChatPermissions, NotificationState, ScheduledMessage } from '@/types';
 import { shouldShowTopbar } from '@/lib/authLayout';
@@ -48,11 +50,8 @@ type SchedulePageProps = {
   selectedChat: Chat | null;
   selectedChatPermissions: ChatPermissions | null;
   setSelectedChat: Dispatch<SetStateAction<Chat | null>>;
-  removeModal: { show: boolean; chat: Chat | null };
-  setRemoveModal: Dispatch<SetStateAction<{ show: boolean; chat: Chat | null }>>;
   handleAddChat: (chat: Chat) => void;
   handleRemoveChat: (chat: Chat) => void;
-  confirmRemoveChat: () => void;
   assistantPrompt: string;
   setAssistantPrompt: Dispatch<SetStateAction<string>>;
   assistantResponse: string;
@@ -132,11 +131,8 @@ export function SchedulePage(props: SchedulePageProps) {
     selectedChat,
     selectedChatPermissions,
     setSelectedChat,
-    removeModal,
-    setRemoveModal,
     handleAddChat,
     handleRemoveChat,
-    confirmRemoveChat,
     assistantPrompt,
     setAssistantPrompt,
     assistantResponse,
@@ -178,6 +174,11 @@ export function SchedulePage(props: SchedulePageProps) {
 
   const showTopbar = shouldShowTopbar({ connected, signedOut });
   const datePickerRef = useRef<HTMLInputElement>(null);
+  const dateDayRef = useRef<HTMLInputElement>(null);
+  const dateMonthRef = useRef<HTMLInputElement>(null);
+  const dateYearRef = useRef<HTMLInputElement>(null);
+  const timeHoursRef = useRef<HTMLInputElement>(null);
+  const timeMinutesRef = useRef<HTMLInputElement>(null);
   const timePickerRef = useRef<SVGSVGElement>(null);
   const timeDisplayRef = useRef<HTMLDivElement>(null);
   const timeMenuRef = useRef<HTMLDivElement>(null);
@@ -201,7 +202,10 @@ export function SchedulePage(props: SchedulePageProps) {
   const [attachments, setAttachments] = useState<Array<{ name: string; path: string }>>([]);
   const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState<number | null>(null);
   const [previewPosition, setPreviewPosition] = useState<{ left: number; top: number } | null>(null);
-  const previewTimerRef = useRef<number | null>(null);
+  const previewHoverTimerRef = useRef<number | null>(null);
+  const resetMessageOptionsRef = useRef(false);
+  const keyboardDateTimeSnapshotRef = useRef<{ date: string; time: string } | null>(null);
+  const keyboardDateTimeActiveRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedEffect = availableEffects.find((effect) => effect.id === selectedEffectId);
   const premiumEffects = availableEffects.filter((effect) => effect.premiumRequired === true);
@@ -211,6 +215,12 @@ export function SchedulePage(props: SchedulePageProps) {
   useEffect(() => {
     setMessage((current) => limitMessageText(current, messageMaxLength));
   }, [messageMaxLength, setMessage]);
+
+  useEffect(() => {
+    if (successPulse && !message.trim()) {
+      resetMessageOptionsRef.current = true;
+    }
+  }, [message, successPulse]);
 
   const loadAvailableEffects = useCallback(async () => {
     if (!connected) {
@@ -243,11 +253,82 @@ export function SchedulePage(props: SchedulePageProps) {
     void loadAvailableEffects();
   }, [messageOptionsOpen, selectedMessageOption, loadAvailableEffects]);
 
-  const clearPreviewTimer = () => {
-    if (previewTimerRef.current !== null) {
-      window.clearTimeout(previewTimerRef.current);
-      previewTimerRef.current = null;
+  const closeAttachmentPreview = () => {
+    if (previewHoverTimerRef.current !== null) {
+      window.clearTimeout(previewHoverTimerRef.current);
+      previewHoverTimerRef.current = null;
     }
+    setPreviewAttachmentIndex(null);
+    setPreviewPosition(null);
+  };
+
+  const handleComposerMessageChange = (nextMessage: string) => {
+    const nextOptions = resetMessageOptionsForNewMessage(
+      resetMessageOptionsRef.current,
+      nextMessage,
+      { selectedMessageOption, selectedEffectId },
+    );
+    if (nextOptions.selectedMessageOption !== selectedMessageOption || nextOptions.selectedEffectId !== selectedEffectId) {
+      setSelectedMessageOption(nextOptions.selectedMessageOption);
+      setSelectedEffectId(nextOptions.selectedEffectId);
+    }
+    if (resetMessageOptionsRef.current && nextMessage.trim()) {
+      resetMessageOptionsRef.current = false;
+    }
+    setMessage(nextMessage);
+  };
+
+  const dateTimeKeyboardRefs: Record<DateTimeKeyboardField, MutableRefObject<HTMLInputElement | null>> = {
+    day: dateDayRef,
+    month: dateMonthRef,
+    year: dateYearRef,
+    hours: timeHoursRef,
+    minutes: timeMinutesRef,
+  };
+
+  const handleDateTimeKeyboardKeyDown = (
+    field: DateTimeKeyboardField,
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (event.key === 'Escape') {
+      if (!keyboardDateTimeActiveRef.current) return;
+      event.preventDefault();
+      const snapshot = keyboardDateTimeSnapshotRef.current;
+      if (snapshot) {
+        setDate(snapshot.date);
+        setTime(snapshot.time);
+      }
+      keyboardDateTimeSnapshotRef.current = null;
+      keyboardDateTimeActiveRef.current = false;
+      event.currentTarget.setCustomValidity('');
+      event.currentTarget.blur();
+      return;
+    }
+
+    if (event.key !== 'Enter') return;
+
+    event.preventDefault();
+    if (!keyboardDateTimeActiveRef.current) {
+      keyboardDateTimeSnapshotRef.current = { date, time };
+      keyboardDateTimeActiveRef.current = true;
+    }
+
+    if (!isValidDateTimeKeyboardField(field, event.currentTarget.value, date, time)) {
+      event.currentTarget.setCustomValidity('Enter a valid date or time.');
+      event.currentTarget.reportValidity();
+      return;
+    }
+
+    event.currentTarget.setCustomValidity('');
+    const nextField = getNextDateTimeKeyboardField(field);
+    if (!nextField) {
+      keyboardDateTimeSnapshotRef.current = null;
+      keyboardDateTimeActiveRef.current = false;
+      event.currentTarget.blur();
+      return;
+    }
+
+    dateTimeKeyboardRefs[nextField].current?.focus();
   };
 
   const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -289,12 +370,6 @@ export function SchedulePage(props: SchedulePageProps) {
     picker.showPicker?.();
     openPickerRef.current = kind;
   };
-
-  useEffect(() => {
-    return () => {
-      clearPreviewTimer();
-    };
-  }, []);
 
   useEffect(() => {
     if (!timePickerOpen) return;
@@ -424,22 +499,13 @@ export function SchedulePage(props: SchedulePageProps) {
         onClose={closeNotification}
       />
 
-      <ChatRemoveModal
-        show={removeModal.show}
-        chatName={removeModal.chat?.name || ''}
-        onConfirm={confirmRemoveChat}
-        onCancel={() =>
-          setRemoveModal({
-            show: false,
-            chat: null,
-          })
-        }
-      />
-
       <div className="app">
         {showTopbar && (
           <header className="topbar">
             <div className="topbar-identity">
+              <span className="brand" aria-label="XMSGi">
+                <span>XMSGi</span>
+              </span>
             </div>
 
             <div className="topbar-actions">
@@ -515,7 +581,10 @@ export function SchedulePage(props: SchedulePageProps) {
           <div className="connection-stage" aria-hidden="true" />
         ) : !connected ? (
           <section className={`auth-panel ${showAuthForm ? 'is-auth-open' : ''}`}>
-            <div className="auth-brand" aria-label="XMSGi">XMSGi</div>
+            <div className="auth-brand" aria-label="XMSGi">
+              <img className="auth-brand-mark" src={xmsgiLogoWhite} alt="" aria-hidden="true" />
+              <span>XMSGi</span>
+            </div>
             <div className="auth-language-switch" role="group" aria-label={t('language.title')}>
               <button type="button" className={locale === 'en' ? 'is-selected' : ''} onClick={() => setLocale('en')} aria-pressed={locale === 'en'}>
                 EN
@@ -778,12 +847,12 @@ export function SchedulePage(props: SchedulePageProps) {
                     value={message}
                     disabled={selectedChatPermissions?.canSend === false}
                     title={selectedChatPermissions?.canSend === false ? t('chat.cannotSendReason') : undefined}
-                    onChange={(event) => setMessage(limitMessageText(event.target.value, messageMaxLength))}
+                    onChange={(event) => handleComposerMessageChange(limitMessageText(event.target.value, messageMaxLength))}
                     onPaste={(event) => {
                       event.preventDefault();
                       const textarea = event.currentTarget;
-                      setMessage((current) => insertMessageText(
-                        current,
+                      handleComposerMessageChange(insertMessageText(
+                        message,
                         event.clipboardData.getData('text'),
                         textarea.selectionStart,
                         textarea.selectionEnd,
@@ -828,37 +897,28 @@ export function SchedulePage(props: SchedulePageProps) {
                         : attachment.name;
 
                       return (
-                        <span
-                          className="message-attachment-chip"
-                          key={`${attachment.path}-${index}`}
-                          onMouseEnter={(event) => {
-                            if (!isImage) return;
-                            clearPreviewTimer();
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            setPreviewPosition({
-                              left: rect.left + rect.width / 2,
-                              top: rect.top - 12,
-                            });
-                            previewTimerRef.current = window.setTimeout(() => {
-                              setPreviewAttachmentIndex(index);
-                            }, 850);
-                          }}
-                          onMouseMove={(event) => {
-                            if (!isImage || previewAttachmentIndex !== index) return;
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            setPreviewPosition({
-                              left: rect.left + rect.width / 2,
-                              top: rect.top - 12,
-                            });
-                          }}
-                          onMouseLeave={() => {
-                            clearPreviewTimer();
-                            setPreviewAttachmentIndex(null);
-                            setPreviewPosition(null);
-                          }}
-                        >
+                        <span className="message-attachment-chip" key={`${attachment.path}-${index}`}>
                           {isImage ? (
-                            <img className="message-attachment-thumb" src={attachment.path} alt={attachment.name} />
+                            <span
+                              className="message-attachment-thumb-target"
+                              onPointerEnter={(event) => {
+                                const rect = event.currentTarget.getBoundingClientRect();
+                                setPreviewPosition({
+                                  left: rect.left + rect.width / 2,
+                                  top: rect.top - 12,
+                                });
+                                if (previewHoverTimerRef.current !== null) {
+                                  window.clearTimeout(previewHoverTimerRef.current);
+                                }
+                                previewHoverTimerRef.current = window.setTimeout(() => {
+                                  setPreviewAttachmentIndex(index);
+                                  previewHoverTimerRef.current = null;
+                                }, 600);
+                              }}
+                              onPointerLeave={closeAttachmentPreview}
+                            >
+                              <img className="message-attachment-thumb" src={attachment.path} alt={attachment.name} draggable={false} />
+                            </span>
                           ) : (
                             <span className={`message-attachment-filemark ${isAudio ? 'is-audio' : ''}`} aria-hidden="true">
                               {isAudio ? (
@@ -867,7 +927,7 @@ export function SchedulePage(props: SchedulePageProps) {
                                 </svg>
                               ) : (
                                 <svg className="message-attachment-document-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                  <path d="M7 3.5A2.5 2.5 0 0 1 9.5 1h6.2c.4 0 .8.1 1.1.4l2.8 2.8c.3.3.4.7.4 1.1v13.2A2.5 2.5 0 0 1 17.5 21h-8A2.5 2.5 0 0 1 7 18.5v-15Zm3 2.5h5v2h-5V6Zm0 4h7v2h-7v-2Zm0 4h7v2h-7v-2Zm-1-8h.01v2H9V6Z" fill="currentColor"/>
+                                  <path d="M7 3.5A2.5 2.5 0 0 1 9.5 1h6.2c.4 0 .8.1 1.1.4l2.8 2.8c.3.3.4.7 0 1.1v13.2A2.5 2.5 0 0 1 17.5 21h-8A2.5 2.5 0 0 1 7 18.5v-15Zm3 2.5h5v2h-5V6Zm0 4h7v2h-7v-2Zm0 4h7v2h-7v-2Zm-1-8h.01v2H9V6Z" fill="currentColor"/>
                                 </svg>
                               )}
                             </span>
@@ -876,6 +936,7 @@ export function SchedulePage(props: SchedulePageProps) {
                           <button
                             type="button"
                             aria-label={`Remove ${attachment.name}`}
+                            onPointerDown={(event) => event.stopPropagation()}
                             onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
                           >
                             <X size={12} aria-hidden="true" />
@@ -884,14 +945,15 @@ export function SchedulePage(props: SchedulePageProps) {
                       );
                     })}
 
-                    {previewAttachmentIndex !== null && attachments[previewAttachmentIndex] && /\.(?:avif|gif|jpe?g|png|webp)$/i.test(attachments[previewAttachmentIndex].name) && previewPosition ? (
+                    {previewAttachmentIndex !== null && attachments[previewAttachmentIndex] && /\.(?:avif|gif|jpe?g|png|webp)$/i.test(attachments[previewAttachmentIndex].name) && previewPosition ? createPortal(
                       <div
                         className="message-attachment-preview"
                         style={{ left: `${previewPosition.left}px`, top: `${previewPosition.top}px` }}
                         aria-label={`Preview of ${attachments[previewAttachmentIndex].name}`}
                       >
-                        <img src={attachments[previewAttachmentIndex].path} alt={attachments[previewAttachmentIndex].name} />
-                      </div>
+                        <img src={attachments[previewAttachmentIndex].path} alt={attachments[previewAttachmentIndex].name} draggable={false} />
+                      </div>,
+                      document.body,
                     ) : null}
                   </div>
 
@@ -1056,18 +1118,18 @@ export function SchedulePage(props: SchedulePageProps) {
                   <div className="moment-controls">
                     <div className="moment-date-display">
                       <CalendarDays className="moment-date-icon" aria-hidden="true" size={18} strokeWidth={1.8} onClick={() => togglePicker('date', datePickerRef)} />
-                      <input className="moment-segment moment-day" value={dateDay} inputMode="numeric" maxLength={2} aria-label={t('composer.day')} onChange={(event) => updateDatePart('day', event.target.value)} />
+                      <input ref={dateDayRef} className="moment-segment moment-day" value={dateDay} inputMode="numeric" maxLength={2} aria-label={t('composer.day')} onChange={(event) => { event.currentTarget.setCustomValidity(''); updateDatePart('day', event.target.value); }} onKeyDown={(event) => handleDateTimeKeyboardKeyDown('day', event)} />
                       <span className="moment-date-separator">/</span>
-                      <input className="moment-segment moment-month" value={dateMonth} inputMode="numeric" maxLength={2} aria-label={t('composer.month')} onChange={(event) => updateDatePart('month', event.target.value)} />
+                      <input ref={dateMonthRef} className="moment-segment moment-month" value={dateMonth} inputMode="numeric" maxLength={2} aria-label={t('composer.month')} onChange={(event) => { event.currentTarget.setCustomValidity(''); updateDatePart('month', event.target.value); }} onKeyDown={(event) => handleDateTimeKeyboardKeyDown('month', event)} />
                       <span className="moment-date-separator">/</span>
-                      <input className="moment-segment moment-year" value={dateYear} inputMode="numeric" maxLength={4} aria-label={t('composer.year')} onChange={(event) => updateDatePart('year', event.target.value)} />
+                      <input ref={dateYearRef} className="moment-segment moment-year" value={dateYear} inputMode="numeric" maxLength={4} aria-label={t('composer.year')} onChange={(event) => { event.currentTarget.setCustomValidity(''); updateDatePart('year', event.target.value); }} onKeyDown={(event) => handleDateTimeKeyboardKeyDown('year', event)} />
                     </div>
 
                     <div ref={timeDisplayRef} className="moment-time-display">
                       <Clock ref={timePickerRef} className="moment-time-icon" aria-hidden="true" size={18} strokeWidth={1.8} onClick={openTimePicker} />
-                      <input className="moment-segment moment-time-hours" value={timeHours} inputMode="numeric" maxLength={2} aria-label={t('composer.hours')} onChange={(event) => updateTimePart('hours', event.target.value)} />
+                      <input ref={timeHoursRef} className="moment-segment moment-time-hours" value={timeHours} inputMode="numeric" maxLength={2} aria-label={t('composer.hours')} onChange={(event) => { event.currentTarget.setCustomValidity(''); updateTimePart('hours', event.target.value); }} onKeyDown={(event) => handleDateTimeKeyboardKeyDown('hours', event)} />
                       <span className="moment-time-separator" aria-hidden="true">:</span>
-                      <input className="moment-segment moment-time-minutes" value={timeMinutes} inputMode="numeric" maxLength={2} aria-label={t('composer.minutes')} onChange={(event) => updateTimePart('minutes', event.target.value)} />
+                      <input ref={timeMinutesRef} className="moment-segment moment-time-minutes" value={timeMinutes} inputMode="numeric" maxLength={2} aria-label={t('composer.minutes')} onChange={(event) => { event.currentTarget.setCustomValidity(''); updateTimePart('minutes', event.target.value); }} onKeyDown={(event) => handleDateTimeKeyboardKeyDown('minutes', event)} />
                     </div>
 
                     {timePickerOpen && createPortal(

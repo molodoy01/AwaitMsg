@@ -4,7 +4,7 @@ import { ChatPicker } from './ChatPicker';
 import { LocaleProvider } from '@/lib/i18n';
 import type { Chat } from '@/types';
 
-function renderPicker(findChat: (query: string) => Promise<unknown>) {
+function renderPicker(findChat: (query: string) => Promise<unknown>, chats: Chat[] = []) {
   vi.stubGlobal('telegram', { findChat });
 
   const onSelect = vi.fn();
@@ -14,7 +14,7 @@ function renderPicker(findChat: (query: string) => Promise<unknown>) {
   render(
     <LocaleProvider>
       <ChatPicker
-        chats={[]}
+        chats={chats}
         selectedChat={null}
         onSelect={onSelect}
         onAddChat={onAddChat}
@@ -25,7 +25,7 @@ function renderPicker(findChat: (query: string) => Promise<unknown>) {
 
   fireEvent.click(screen.getByRole('button', { name: 'Choose a chat…' }));
 
-  return { onSelect, onAddChat };
+  return { onSelect, onAddChat, onRemoveChat };
 }
 
 describe('ChatPicker global username result flow', () => {
@@ -49,5 +49,47 @@ describe('ChatPicker global username result flow', () => {
       expect(onAddChat).toHaveBeenCalledWith(privateUser);
       expect(onSelect).toHaveBeenCalledWith(privateUser);
     });
+  });
+
+  it('removes a chat without selecting it when the row delete control is clicked', () => {
+    const chat: Chat = {
+      id: 'chat-1',
+      name: 'Chat one',
+      type: 'group',
+    };
+    const { onSelect, onRemoveChat } = renderPicker(vi.fn(), [chat]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Chat one' }));
+
+    expect(onRemoveChat).toHaveBeenCalledWith(chat);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('keeps the remove control available on hover and keyboard focus', () => {
+    const chat: Chat = { id: 'chat-2', name: 'Hover target', type: 'private' };
+    renderPicker(vi.fn(), [chat]);
+
+    const remove = screen.getByRole('button', { name: 'Remove Hover target' });
+    fireEvent.mouseOver(remove);
+    fireEvent.focus(remove);
+
+    expect(remove).toBeVisible();
+    expect(remove).toHaveAttribute('title', 'Remove');
+  });
+
+  it('renders long channel names and channel type without selecting on delete', () => {
+    const chat: Chat = {
+      id: '-1004431408545',
+      name: 'Новости топ 5 дня с очень длинным названием',
+      type: 'channel',
+    };
+    const { onSelect, onRemoveChat } = renderPicker(vi.fn(), [chat]);
+
+    expect(screen.getByText(chat.name)).toBeInTheDocument();
+    expect(screen.getByText('Channel')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: `Remove ${chat.name}` }));
+
+    expect(onRemoveChat).toHaveBeenCalledWith(chat);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

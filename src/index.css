@@ -141,6 +141,7 @@ body:has(.auth-panel) {
 .brand {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   color: #edf2f5;
   font-family: "Avenir Next", "Segoe UI Light", "Helvetica Neue", Arial, sans-serif;
   font-size: 18px;
@@ -154,6 +155,12 @@ body:has(.auth-panel) {
 .topbar .brand {
   transform: skewX(-4deg);
   transform-origin: center;
+}
+
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
 }
 
 .status {
@@ -494,6 +501,17 @@ body:has(.auth-panel) {
   border-bottom: 1px solid rgba(154, 168, 184, 0.12);
 }
 
+.settings-view-logo {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(200, 210, 219, 0.8);
+  font-family: "Avenir Next", "Segoe UI Light", "Helvetica Neue", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 350;
+  letter-spacing: 0.22em;
+  line-height: 1;
+}
+
 .settings-view-done {
   background: transparent;
   border: 0;
@@ -831,6 +849,9 @@ body:has(.auth-panel) {
 }
 
 .auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   position: fixed;
   top: 32px;
   left: 90px;
@@ -844,6 +865,12 @@ body:has(.auth-panel) {
   white-space: nowrap;
   transform: skewX(-4deg);
   transform-origin: left center;
+}
+
+.auth-brand-mark {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
 }
 
 .auth-intro {
@@ -1893,10 +1920,10 @@ textarea {
   width: max-content;
   max-width: 100%;
   overflow: hidden;
-  color: rgba(226, 230, 235, 0.14);
+  color: rgba(226, 230, 235, 0.32);
   font-family: var(--sans);
   font-size: clamp(32px, 3.1vw, 54px);
-  font-weight: 200;
+  font-weight: 300;
   letter-spacing: -0.055em;
   line-height: 1.08;
   pointer-events: none;
@@ -2034,6 +2061,10 @@ textarea {
   min-width: 88px;
   margin-left: auto;
   margin-right: 20px;
+  color: rgba(183, 194, 204, 0.58);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
   transform: translateX(-9px) scaleX(0.86);
   transform-origin: right center;
 }
@@ -3349,6 +3380,35 @@ textarea:focus-visible {
   display: none !important;
 }
 
+.chat-picker-menu .chat-option-remove {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dim);
+  font: 16px/16px "Segoe UI", sans-serif;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.chat-picker-menu .chat-option:hover .chat-option-remove,
+.chat-picker-menu .chat-option:focus-within .chat-option-remove,
+.chat-picker-menu .chat-option-remove:focus-visible {
+  opacity: 0.7;
+}
+
+.chat-picker-menu .chat-option-remove:hover,
+.chat-picker-menu .chat-option-remove:focus-visible {
+  color: #d9a0a0;
+  background: rgba(217, 160, 160, 0.1);
+  outline: none;
+}
+
 .chat-picker-menu .chat-option .msg-btn.delete {
   color: var(--dim);
   opacity: 0.65 !important;
@@ -3887,12 +3947,15 @@ textarea:focus-visible {
 }
 
 .message-attachments {
-  position: relative;
+  position: absolute;
+  top: 0;
+  right: 140px;
+  left: 28px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  flex: 1 1 auto;
-  width: 100%;
+  flex: none;
+  width: auto;
   min-width: 0;
   max-width: none;
   gap: 6px;
@@ -3909,9 +3972,9 @@ textarea:focus-visible {
   opacity: 1;
   visibility: visible;
   overflow: hidden;
-  width: 100%;
+  width: auto;
   max-width: none;
-  flex: 1 1 auto;
+  flex: none;
 }
 
 .message-attachments:not(.has-attachments) {
@@ -3932,7 +3995,7 @@ textarea:focus-visible {
   min-width: 42px;
   max-width: 172px;
   gap: 5px;
-  padding: 2px 6px 2px 3px;
+  padding: 1px 6px 1px 3px;
   border: 1px solid rgba(154, 168, 184, 0.2);
   border-radius: 6px;
   background: rgba(25, 33, 40, 0.78);
@@ -3943,6 +4006,14 @@ textarea:focus-visible {
   pointer-events: auto;
   overflow: visible;
   transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.message-attachment-thumb-target {
+  display: inline-grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
 }
 
 .message-attachment-chip:hover {

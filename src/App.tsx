@@ -82,11 +82,8 @@ function App() {
     setSelectedChat,
     selectedChatPermissions,
     refreshChatPermissions,
-    removeModal,
-    setRemoveModal,
     handleAddChat,
     handleRemoveChat,
-    confirmRemoveChat,
   } = useChats({ connected });
 
   useEffect(() => {
@@ -246,11 +243,8 @@ function App() {
           selectedChat={selectedChat}
           selectedChatPermissions={selectedChatPermissions}
           setSelectedChat={setSelectedChat}
-          removeModal={removeModal}
-          setRemoveModal={setRemoveModal}
           handleAddChat={handleAddChat}
           handleRemoveChat={handleRemoveChat}
-          confirmRemoveChat={confirmRemoveChat}
           assistantPrompt={assistantPrompt}
           setAssistantPrompt={setAssistantPrompt}
           assistantResponse={assistantResponse}

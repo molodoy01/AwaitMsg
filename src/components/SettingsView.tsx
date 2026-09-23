@@ -53,6 +53,8 @@ export function SettingsView({
   return (
     <div className="settings-view">
       <header className="settings-view-header">
+        <div className="settings-view-logo">XMSGi</div>
+
         <button
           type="button"
           className="settings-view-done"

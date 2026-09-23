@@ -1,7 +1,7 @@
 {
   "name": "awaitmsg",
   "private": true,
-  "version": "2.1.7",
+  "version": "2.2.0",
   "repository": "https://github.com/molodoy01/AwaitMsg",
   "type": "module",
   "scripts": {
@@ -52,11 +52,13 @@
     },
     "files": [
       "dist/**/*",
+      "build/icon.ico",
       "main.cjs",
       "preload.cjs",
       "chat-storage.cjs",
       "gemini.cjs",
       "telegram.cjs",
+      "telegram-dialogs.cjs",
       "telegram-inline-keyboard.cjs",
       "telegram-errors.cjs",
       "telegram-account-storage.cjs",
